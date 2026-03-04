@@ -1,0 +1,101 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hikari-persist"
+dynamic = ["version"]
+description = "A lightweight and modular persistent cache library for hikari-based Discord bots"
+authors = [
+    { name = "WilDev Studios", email = "wildevstudios@gmail.com" }
+]
+readme = "README.md"
+requires-python = ">=3.10,<3.15"
+license = { file = "LICENSE" }
+keywords = [
+    "async",
+    "cache",
+    "database",
+    "discord",
+    "hikari",
+    "persistence",
+    "sqlite",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Framework :: AsyncIO",
+    "Typing :: Typed",
+    "Natural Language :: English",
+    "Topic :: Software Development :: Libraries",
+]
+
+dependencies = [
+    "hikari>=2.5.0,<3",
+]
+
+[project.urls]
+Homepage = "https://github.com/WilDev-Studios/hikari-persist"
+Repository = "https://github.com/WilDev-Studios/hikari-persist"
+Documentation = "https://hikari-persist.wildevstudios.net/"
+Issues = "https://github.com/WilDev-Studios/hikari-persist/issues"
+
+[project.optional-dependencies]
+sqlite = [
+    "aiosqlite>0.22.1,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["hikaripersist"]
+include = [
+    "hikaripersist/py.typed"
+]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "/assets",
+    "/docs",
+    "/tests",
+]
+
+[tool.hatch.version]
+path = "hikaripersist/__init__.py"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+show-fixes = true
+
+[tool.ruff.lint]
+select = [
+    'F',   # pyflakes
+    'E',   # pycodestyle errors
+    'W',   # pycodestyle warnings
+    'N',   # pep8-naming
+    "UP",  # pyupgrade
+    'B',   # flake8-bugbear
+    'A',   # flake8-builtins
+    "C4",  # flake8-comprehensions
+    "DTZ", # flake8-datetimez
+    "ISC", # implicit string concat
+    "PIE", # flake8-pie
+    "RET", # flake8-return
+    "SIM", # flake8-simplify
+    #"T20", # flake8-print
+    "RUF", # Ruff-specific
+    "ANN", # type annotations
+    "ARG", # no unused func args
+    "PL",  # pylint static rules
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
