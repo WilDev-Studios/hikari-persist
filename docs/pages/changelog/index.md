@@ -7,6 +7,6 @@ This page provides a high-level overview of changes in each release. For full de
 
 ## 0.1.0 (In Progress)
 
-### 0.1.0a1 (Staging)
+### 0.1.0a1 (March 4th, 2026)
 
 - Initial release.

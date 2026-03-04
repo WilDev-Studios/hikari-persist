@@ -73,14 +73,14 @@ nav:
     - hikaripersist.backend:
       - ~.base: pages/api/backend/base.md
       - ~.sqlite: pages/api/backend/sqlite.md
-    - hikariwave.cache: pages/api/cache.md
-    - hikariwave.cached:
+    - hikaripersist.cache: pages/api/cache.md
+    - hikaripersist.cached:
       - ~.channel: pages/api/cached/channel.md
       - ~.guild: pages/api/cached/guild.md
       - ~.member: pages/api/cached/member.md
       - ~.message: pages/api/cached/message.md
       - ~.role: pages/api/cached/role.md
-    - hikariwave.rule: pages/api/rule.md
+    - hikaripersist: pages/api/rule.md
   - Changelog:
     - Index: pages/changelog/index.md
     - 0.1.0a1: pages/changelog/0.1.0a1.md
