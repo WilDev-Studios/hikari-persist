@@ -7,7 +7,7 @@ This page provides a high-level overview of changes in each release. For full de
 
 ## 0.1.0 (In Progress)
 
-### 0.1.0a2 (Staging)
+### 0.1.0a2 (March 4th, 2026)
 
 - Listeners now able to dispatch on cache update or event dispatch (cache update opt-in).
 
