@@ -75,12 +75,15 @@ nav:
       - ~.sqlite: pages/api/backend/sqlite.md
     - hikaripersist.cache: pages/api/cache.md
     - hikaripersist.cached:
+      - ~.base: pages/api/cached/base.md
       - ~.channel: pages/api/cached/channel.md
       - ~.guild: pages/api/cached/guild.md
       - ~.member: pages/api/cached/member.md
       - ~.message: pages/api/cached/message.md
       - ~.role: pages/api/cached/role.md
-    - hikaripersist: pages/api/rule.md
+    - hikaripersist.impl:
+      - ~.iterator: pages/api/impl/iterator.md
+    - hikaripersist.rule: pages/api/rule.md
   - Changelog:
     - Index: pages/changelog/index.md
     - 0.1.0a3: pages/changelog/0.1.0a3.md
