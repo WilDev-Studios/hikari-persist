@@ -7,12 +7,8 @@ from datetime import (
     timezone,
 )
 from hikaripersist.cached.base import CachedObject
-from typing import TYPE_CHECKING
 
 import hikari
-
-if TYPE_CHECKING:
-    import aiosqlite
 
 __all__ = (
     "CachedChannel",
@@ -47,7 +43,7 @@ class CachedChannel(CachedObject):
     @classmethod
     def from_sqlite(
         cls: type[CachedChannel],
-        row: aiosqlite.Row,
+        row, # noqa: ANN001 - Ambiguous because aiosqlite is optional
         overwrites: Mapping[hikari.Snowflake, CachedPermissionOverwrite],
     ) -> CachedChannel:
         return CachedChannel(
@@ -81,7 +77,7 @@ class CachedPermissionOverwrite:
     @classmethod
     def from_sqlite(
         cls: type[CachedPermissionOverwrite],
-        row: aiosqlite.Row,
+        row, # noqa: ANN001 - Ambiguous because aiosqlite is optional
     ) -> CachedPermissionOverwrite:
         return cls(
             row[0],

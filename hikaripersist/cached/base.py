@@ -4,10 +4,6 @@ from abc import (
     ABC,
     abstractmethod,
 )
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    import aiosqlite
 
 __all__ = ("CachedObject",)
 
@@ -18,7 +14,7 @@ class CachedObject(ABC):
     @abstractmethod
     def from_sqlite(
         cls: type[CachedObject],
-        row: aiosqlite.Row,
+        row, # noqa: ANN001 - Ambiguous because aiosqlite is optional
     ) -> CachedObject:
         """
         Create a new cached object from a SQLite row.

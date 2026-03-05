@@ -113,13 +113,19 @@ TL;DR:
 - `confirm=False` (or omitted): Fire-and-forget (default, very fast)
 - `confirm-True`: Waits for database write to complete (slight latency)
 
+## Cache/Database Stability
+
+Before `1.0.0`, the database schema may change between versions.
+If this occurs, delete your cache database and allow it to rebuild.
+
+Database migration is implemented, but early development is cumbersome when getting the API stabilized.
+
 ## Implemented Features
 
 - [X] Basic objects (messages, channels, guilds, members, etc.)
 - [ ] Advanced lookups (batches, search, filter)
-- [ ] Advanced object metadata
+- [X] Advanced object metadata
 - [ ] Opt-in hydration (cache fail -> REST fetch)
-- [ ] In-memory, temporary cache
 - Database backends:
     - [X] SQLite
     - [ ] MySQL

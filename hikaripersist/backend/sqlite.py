@@ -98,7 +98,15 @@ class SQLiteBackend(Backend):
                 name        TEXT NOT NULL,
                 description TEXT,
                 owner       INTEGER NOT NULL,
-                created     REAL NOT NULL
+                created     REAL NOT NULL,
+                icon        TEXT,
+                banner      TEXT,
+                nsfw        INTEGER NOT NULL,
+                mfa         INTEGER NOT NULL,
+                verification INTEGER NOT NULL,
+                features     TEXT,
+                vanity       TEXT,
+                premium      INTEGER NOT NULL
             );
         """)
         await self._connection.execute("""
@@ -109,8 +117,15 @@ class SQLiteBackend(Backend):
                 discriminator TEXT NOT NULL,
                 created       REAL NOT NULL,
                 joined        REAL NOT NULL,
-                nickname      TEXT,
+                avatar        TEXT NOT NULL,
+                banner        TEXT,
+                name          TEXT NOT NULL,
+                flags         INTEGER NOT NULL,
+                bot           INTEGER NOT NULL,
+                system        INTEGER NOT NULL,
                 roles         TEXT,
+                premium_since REAL,
+                timeout       REAL,
                 PRIMARY KEY (id, guild)
             );
         """)
@@ -118,8 +133,12 @@ class SQLiteBackend(Backend):
             CREATE TABLE IF NOT EXISTS messages (
                 id      INTEGER NOT NULL,
                 channel INTEGER NOT NULL,
-                guild   INTEGER,
+                guild   INTEGER NOT NULL,
+                author  INTEGER NOT NULL,
+                created REAL NOT NULL,
+                pinned  INTEGER NOT NULL,
                 content TEXT,
+                edited  REAL,
                 PRIMARY KEY (id, channel)
             );
         """)
@@ -140,9 +159,13 @@ class SQLiteBackend(Backend):
                 guild       INTEGER NOT NULL,
                 name        TEXT NOT NULL,
                 color       INTEGER NOT NULL,
+                icon        TEXT,
                 permissions INTEGER NOT NULL,
                 created     REAL NOT NULL,
-                position    INTEGER NOT NULL
+                position    INTEGER NOT NULL,
+                hoisted     INTEGER NOT NULL,
+                bot         INTEGER,
+                premium     INTEGER NOT NULL
             );
         """)
         await self._connection.execute(
@@ -507,8 +530,22 @@ class SQLiteBackend(Backend):
         future: asyncio.Future[None] | None = await self.__execute(
             """
                 INSERT OR REPLACE INTO guilds
-                (id, name, description, owner, created)
-                VALUES (?, ?, ?, ?, ?);
+                (
+                    id,
+                    name,
+                    description,
+                    owner,
+                    created,
+                    icon,
+                    banner,
+                    nsfw,
+                    mfa,
+                    verification,
+                    features,
+                    vanity,
+                    premium
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             (
                 guild.id,
@@ -516,6 +553,14 @@ class SQLiteBackend(Backend):
                 guild.description,
                 guild.owner_id,
                 guild.created_at.timestamp(),
+                guild.icon_hash,
+                guild.banner_hash,
+                int(guild.nsfw_level),
+                int(guild.mfa_level),
+                int(guild.verification_level),
+                ','.join(str(feature) for feature in guild.features) if guild.features else None,
+                guild.vanity_url_code,
+                int(guild.premium_tier),
             ),
             confirm,
         )
@@ -547,8 +592,34 @@ class SQLiteBackend(Backend):
         confirm: bool,
     ) -> asyncio.Future[None] | None:
         future: asyncio.Future[None] | None = await self.__execute(
-            "UPDATE guilds SET name = ?, description = ? WHERE id = ?;",
-            (guild.name, guild.description, guild.id,),
+            """
+                UPDATE guilds SET
+                name = ?,
+                description = ?,
+                icon = ?,
+                banner = ?,
+                nsfw = ?,
+                mfa = ?,
+                verification = ?,
+                features = ?,
+                vanity = ?,
+                premium = ?
+                WHERE id = ?;
+            """,
+            (
+                guild.name,
+                guild.description,
+                guild.icon_hash,
+                guild.banner_hash,
+                int(guild.nsfw_level),
+                int(guild.mfa_level),
+                int(guild.verification_level),
+                ','.join(str(feature) for feature in guild.features) if guild.features else None,
+                guild.vanity_url_code,
+                int(guild.premium_tier),
+
+                guild.id,
+            ),
             confirm,
         )
 
@@ -657,11 +728,29 @@ class SQLiteBackend(Backend):
         member: hikari.Member,
         confirm: bool,
     ) -> asyncio.Future[None] | None:
+        comm_disabled = member.communication_disabled_until()
+
         future: asyncio.Future[None] | None = await self.__execute(
             """
                 INSERT OR REPLACE INTO members
-                (id, guild, username, discriminator, created, joined, nickname, roles)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+                (
+                    id,
+                    guild,
+                    username,
+                    discriminator,
+                    created,
+                    joined,
+                    avatar,
+                    banner,
+                    name,
+                    flags,
+                    bot,
+                    system,
+                    roles,
+                    premium_since,
+                    timeout
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             (
                 member.id,
@@ -670,8 +759,15 @@ class SQLiteBackend(Backend):
                 member.discriminator,
                 member.created_at.timestamp(),
                 member.joined_at.timestamp(),
-                member.nickname,
+                str(member.display_avatar_url),
+                str(member.display_banner_url) if member.display_banner_url else None,
+                member.display_name,
+                int(member.flags),
+                int(member.is_bot),
+                int(member.is_system),
                 ','.join(str(role) for role in member.role_ids) if member.role_ids else None,
+                member.premium_since.timestamp() if member.premium_since else None,
+                comm_disabled.timestamp() if comm_disabled else None,
             ),
             confirm,
         )
@@ -703,16 +799,33 @@ class SQLiteBackend(Backend):
         member: hikari.Member,
         confirm: bool,
     ) -> asyncio.Future[None] | None:
+        comms_disabled = member.communication_disabled_until()
+
         future: asyncio.Future[None] = await self.__execute(
             """
-                UPDATE members SET username = ?, discriminator = ?, nickname = ?, roles = ?
+                UPDATE members SET
+                username = ?,
+                discriminator = ?,
+                avatar = ?,
+                banner = ?,
+                name = ?,
+                flags = ?,
+                roles = ?,
+                premium_since = ?,
+                timeout = ?
                 WHERE id = ? AND guild = ?;
             """,
             (
                 member.username,
                 member.discriminator,
-                member.nickname,
+                str(member.display_avatar_url),
+                str(member.display_banner_url) if member.display_banner_url else None,
+                member.display_name,
+                int(member.flags),
                 ','.join(str(role) for role in member.role_ids) if member.role_ids else None,
+                member.premium_since.timestamp() if member.premium_since else None,
+                comms_disabled.timestamp() if comms_disabled else None,
+
                 member.id,
                 member.guild_id,
             ),
@@ -730,12 +843,28 @@ class SQLiteBackend(Backend):
         confirm: bool,
     ) -> asyncio.Future[None] | None:
         future: asyncio.Future[None] | None = await self.__execute(
-            "INSERT OR REPLACE INTO messages (id, channel, guild, content) VALUES (?, ?, ?, ?);",
+            """
+                INSERT OR REPLACE INTO messages (
+                    id,
+                    channel,
+                    guild,
+                    author,
+                    created,
+                    pinned,
+                    content,
+                    edited,
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+            """,
             (
                 message.id,
                 message.channel_id,
                 message.guild_id,
+                message.author.id,
+                message.created_at.timestamp(),
+                int(message.is_pinned),
                 message.content,
+                message.edited_timestamp.timestamp() if message.edited_timestamp else None,
             ),
             confirm,
         )
@@ -770,9 +899,20 @@ class SQLiteBackend(Backend):
         fields: list[str] = []
         values: list[object] = []
 
+        if message.is_pinned is not hikari.UNDEFINED:
+            fields.append("pinned = ?")
+            values.append(message.is_pinned)
+
         if message.content is not hikari.UNDEFINED:
             fields.append("content = ?")
             values.append(message.content)
+
+        if message.edited_timestamp is not hikari.UNDEFINED:
+            fields.append("edited = ?")
+            values.append(
+                message.edited_timestamp.timestamp()
+                if message.edited_timestamp else None
+            )
 
         if not fields:
             return None
@@ -798,17 +938,33 @@ class SQLiteBackend(Backend):
         future: asyncio.Future[None] | None = await self.__execute(
             """
                 INSERT OR REPLACE INTO roles
-                (id, guild, name, color, permissions, created, position)
-                VALUES (?, ?, ?, ?, ?, ?, ?);
+                (
+                    id,
+                    guild,
+                    name,
+                    color,
+                    icon,
+                    permissions,
+                    created,
+                    position,
+                    hoisted,
+                    bot,
+                    premium
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             (
                 role.id,
                 role.guild_id,
                 role.name,
                 int(role.color),
+                role.icon_hash,
                 int(role.permissions),
                 role.created_at.timestamp(),
                 role.position,
+                int(role.is_hoisted),
+                int(role.bot_id) if role.bot_id is not None else None,
+                int(role.is_premium_subscriber_role),
             ),
             confirm,
         )
@@ -840,8 +996,26 @@ class SQLiteBackend(Backend):
         confirm: bool,
     ) -> asyncio.Future[None] | None:
         future: asyncio.Future[None] | None = await self.__execute(
-            "UPDATE roles SET name = ?, color = ?, permissions = ?, position = ? WHERE id = ?;",
-            (role.name, int(role.color), int(role.permissions), role.position, role.id,),
+            """
+            UPDATE roles SET
+                name = ?,
+                color = ?,
+                icon = ?,
+                permissions = ?,
+                position = ?,
+                hoisted = ?
+            WHERE id = ?;
+            """,
+            (
+                role.name,
+                int(role.color),
+                role.icon_hash,
+                int(role.permissions),
+                role.position,
+                int(role.is_hoisted),
+
+                role.id,
+            ),
             confirm,
         )
 
