@@ -11,7 +11,10 @@ from hikaripersist.cached.member import CachedMember
 from hikaripersist.cached.message import CachedMessage
 from hikaripersist.cached.role import CachedRole
 from hikaripersist.rule import Rule
-from typing import ClassVar
+from typing import (
+    ClassVar,
+    TypeVar,
+)
 
 import asyncio
 import hikari
@@ -19,6 +22,8 @@ import inspect
 import logging
 
 __all__ = ("Cache",)
+
+EventT = TypeVar("EventT", bound=hikari.Event)
 
 logger: logging.Logger = logging.getLogger("persist.cache")
 
@@ -79,10 +84,10 @@ class Cache:
         self._rule: Rule = rule or Rule()
 
         self._listeners: dict[
-            type[hikari.Event], list[Callable[[hikari.Event], Awaitable[None]]]
+            type[hikari.Event], list[tuple[Callable[[hikari.Event], Awaitable[None]], bool]]
         ] = {}
         self._handlers: dict[
-            type[hikari.Event], Callable[[hikari.Event], Awaitable[None]]
+            type[hikari.Event], Callable[[hikari.Event, bool], Awaitable[None]]
         ] = {
             hikari.GuildChannelCreateEvent: self.__channel_create,
             hikari.GuildChannelDeleteEvent: self.__channel_delete,
@@ -106,25 +111,49 @@ class Cache:
         for event in self._handlers:
             self._bot.subscribe(event, self.__event)
 
-    async def __bot_starting(self, _: hikari.StartingEvent) -> None:
+    async def __bot_starting(self, _: hikari.StartingEvent, __: bool) -> None:
         await self._backend.connect()
 
-    async def __bot_stopping(self, _: hikari.StoppingEvent) -> None:
+    async def __bot_stopping(self, _: hikari.StoppingEvent, __: bool) -> None:
         await self._backend.disconnect()
 
     async def __event(self, event: hikari.Event) -> None:
         event_type: type[hikari.Event] = type(event)
 
-        if event_type in self._handlers:
-            await self._handlers[event_type](event)
+        listeners: list[
+            tuple[Callable[[EventT], Awaitable[None]], bool]
+        ] = self._listeners.get(event_type, [])
+        needs_confirm: bool = any(confirm for _, confirm in listeners)
 
-        if event_type in self._listeners:
-            await asyncio.gather(
-                *(listener(event) for listener in self._listeners[event_type]),
-                return_exceptions=True,
+        future: asyncio.Future[None] | None = None
+
+        if event_type in self._handlers:
+            future: asyncio.Future[None] | None = await self._handlers[event_type](
+                event, needs_confirm
             )
 
-    async def __channel_create(self, event: hikari.GuildChannelCreateEvent) -> None:
+        if not listeners:
+            return
+
+        async def _invoke(
+            func: Callable[[EventT, bool], Awaitable[None]],
+            confirms: bool,
+        ) -> None:
+            if confirms and future is not None:
+                await future
+
+            await func(event)
+
+        await asyncio.gather(
+            *(_invoke(func, confirm) for func, confirm in listeners),
+            return_exceptions=True,
+        )
+
+    async def __channel_create(
+        self,
+        event: hikari.GuildChannelCreateEvent,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         if not self._rule._channel.can_cache(
             event.channel_id,
             event.guild_id,
@@ -132,16 +161,24 @@ class Cache:
             logger.debug(
                 f"Ignoring CHANNEL_CREATE - ruleset violation: ChannelID={event.channel_id}"
             )
-            return
+            return None
 
-        await self._backend.channel_create(event.channel)
         logger.debug(f"Cached CHANNEL_CREATE: ChannelID={event.channel_id}")
+        return await self._backend.channel_create(event.channel, confirm)
 
-    async def __channel_delete(self, event: hikari.GuildChannelDeleteEvent) -> None:
-        await self._backend.channel_delete(event.channel_id)
+    async def __channel_delete(
+        self,
+        event: hikari.GuildChannelDeleteEvent,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         logger.debug(f"Cached CHANNEL_DELETE: ChannelID={event.channel_id}")
+        return await self._backend.channel_delete(event.channel_id, confirm)
 
-    async def __channel_update(self, event: hikari.GuildChannelUpdateEvent) -> None:
+    async def __channel_update(
+        self,
+        event: hikari.GuildChannelUpdateEvent,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         if not self._rule._channel.can_cache(
             event.channel_id,
             event.guild_id,
@@ -149,40 +186,56 @@ class Cache:
             logger.debug(
                 f"Ignoring CHANNEL_UPDATE - ruleset violation: ChannelID={event.channel_id}"
             )
-            return
+            return None
 
-        await self._backend.channel_update(event.channel)
         logger.debug(f"Cached CHANNEL_UPDATE: ChannelID={event.channel_id}")
+        return await self._backend.channel_update(event.channel, confirm)
 
-    async def __guild_join(self, event: hikari.GuildJoinEvent) -> None:
+    async def __guild_join(
+        self,
+        event: hikari.GuildJoinEvent,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         if not self._rule._guild.can_cache(
             event.guild_id,
         ):
             logger.debug(
                 f"Ignoring GUILD_JOIN - ruleset violation: GuildID={event.guild_id}"
             )
-            return
+            return None
 
-        await self._backend.guild_join(event.guild)
         logger.debug(f"Cached GUILD_JOIN: GuildID={event.guild_id}")
+        return await self._backend.guild_join(event.guild, confirm)
 
-    async def __guild_leave(self, event: hikari.GuildLeaveEvent) -> None:
-        await self._backend.guild_leave(event.guild_id)
+    async def __guild_leave(
+        self,
+        event: hikari.GuildLeaveEvent,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         logger.debug(f"Cached GUILD_LEAVE: GuildID={event.guild_id}")
+        return await self._backend.guild_leave(event.guild_id, confirm)
 
-    async def __guild_update(self, event: hikari.GuildUpdateEvent) -> None:
+    async def __guild_update(
+        self,
+        event: hikari.GuildUpdateEvent,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         if not self._rule._guild.can_cache(
             event.guild_id,
         ):
             logger.debug(
                 f"Ignoring GUILD_UPDATE - ruleset violation: GuildID={event.guild_id}"
             )
-            return
+            return None
 
-        await self._backend.guild_update(event.guild)
         logger.debug(f"Cached GUILD_UPDATE: GuildID={event.guild_id}")
+        return await self._backend.guild_update(event.guild, confirm)
 
-    async def __member_create(self, event: hikari.MemberCreateEvent) -> None:
+    async def __member_create(
+        self,
+        event: hikari.MemberCreateEvent,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         if not self._rule._member.can_cache(
             event.guild_id,
             event.user_id,
@@ -191,16 +244,24 @@ class Cache:
                 "Ignoring MEMBER_CREATE - ruleset violation:"
                 f"UserID={event.user_id}, GuildID={event.guild_id}"
             )
-            return
+            return None
 
-        await self._backend.member_create(event.member)
         logger.debug(f"Cached MEMBER_CREATE: UserID={event.user_id}, GuildID={event.guild_id}")
+        return await self._backend.member_create(event.member, confirm)
 
-    async def __member_delete(self, event: hikari.MemberDeleteEvent) -> None:
-        await self._backend.member_delete(event.user_id, event.guild_id)
+    async def __member_delete(
+        self,
+        event: hikari.MemberDeleteEvent,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         logger.debug(f"Cached MEMBER_DELETE: UserID={event.user_id}, GuildID={event.guild_id}")
+        return await self._backend.member_delete(event.user_id, event.guild_id, confirm)
 
-    async def __member_update(self, event: hikari.MemberUpdateEvent) -> None:
+    async def __member_update(
+        self,
+        event: hikari.MemberUpdateEvent,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         if not self._rule._member.can_cache(
             event.guild_id,
             event.user_id,
@@ -209,12 +270,16 @@ class Cache:
                 "Ignoring MEMBER_UPDATE - ruleset violation:"
                 f"UserID={event.user_id}, GuildID={event.guild_id}"
             )
-            return
+            return None
 
-        await self._backend.member_update(event.member)
         logger.debug(f"Cached MEMBER_UPDATE: UserID={event.user_id}, GuildID={event.guild_id}")
+        return await self._backend.member_update(event.member, confirm)
 
-    async def __message_create(self, event: hikari.GuildMessageCreateEvent) -> None:
+    async def __message_create(
+        self,
+        event: hikari.GuildMessageCreateEvent,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         if not self._rule._message.can_cache(
             event.channel_id,
             event.message.guild_id,
@@ -225,20 +290,28 @@ class Cache:
                 "Ignoring MESSAGE_CREATE - ruleset violation:"
                 f"MessageID={event.message_id}, ChannelID={event.channel_id}"
             )
-            return
+            return None
 
-        await self._backend.message_create(event.message)
         logger.debug(
             f"Cached MESSAGE_CREATE: MessageID={event.message_id}, ChannelID={event.channel_id}"
         )
+        return await self._backend.message_create(event.message, confirm)
 
-    async def __message_delete(self, event: hikari.GuildMessageDeleteEvent) -> None:
-        await self._backend.message_delete(event.message_id, event.channel_id)
+    async def __message_delete(
+        self,
+        event: hikari.GuildMessageDeleteEvent,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         logger.debug(
             f"Cached MESSAGE_DELETE: MessageID={event.message_id}, ChannelID={event.channel_id}"
         )
+        return await self._backend.message_delete(event.message_id, event.channel_id, confirm)
 
-    async def __message_update(self, event: hikari.GuildMessageUpdateEvent) -> None:
+    async def __message_update(
+        self,
+        event: hikari.GuildMessageUpdateEvent,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         if not self._rule._message.can_cache(
             event.channel_id,
             event.message.guild_id,
@@ -249,14 +322,18 @@ class Cache:
                 "Ignoring MESSAGE_UPDATE - ruleset violation:"
                 f"MessageID={event.message_id}, ChannelID={event.channel_id}"
             )
-            return
+            return None
 
-        await self._backend.message_update(event.message)
         logger.debug(
             f"Cached MESSAGE_UPDATE: MessageID={event.message_id}, ChannelID={event.channel_id}"
         )
+        return await self._backend.message_update(event.message, confirm)
 
-    async def __role_create(self, event: hikari.RoleCreateEvent) -> None:
+    async def __role_create(
+        self,
+        event: hikari.RoleCreateEvent,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         if not self._rule._role.can_cache(
             event.guild_id,
             event.role_id,
@@ -265,16 +342,24 @@ class Cache:
                 "Ignoring ROLE_CREATE - ruleset violation:"
                 f"RoleID={event.role_id}, GuildID={event.guild_id}"
             )
-            return
+            return None
 
-        await self._backend.role_create(event.role)
         logger.debug(f"Cached ROLE_CREATE: RoleID={event.role_id}, GuildID={event.guild_id}")
+        return await self._backend.role_create(event.role, confirm)
 
-    async def __role_delete(self, event: hikari.RoleDeleteEvent) -> None:
-        await self._backend.role_delete(event.role_id)
+    async def __role_delete(
+        self,
+        event: hikari.RoleDeleteEvent,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         logger.debug(f"Cached ROLE_DELETE: RoleID={event.role_id}, GuildID={event.guild_id}")
+        return await self._backend.role_delete(event.role_id, confirm)
 
-    async def __role_update(self, event: hikari.RoleUpdateEvent) -> None:
+    async def __role_update(
+        self,
+        event: hikari.RoleUpdateEvent,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         if not self._rule._role.can_cache(
             event.guild_id,
             event.role_id,
@@ -283,10 +368,10 @@ class Cache:
                 "Ignoring ROLE_UPDATE - ruleset violation:"
                 f"RoleID={event.role_id}, GuildID={event.guild_id}"
             )
-            return
+            return None
 
-        await self._backend.role_update(event.role)
         logger.debug(f"Cached ROLE_UPDATE: RoleID={event.role_id}, GuildID={event.guild_id}")
+        return await self._backend.role_update(event.role, confirm)
 
     @property
     def bot(self) -> hikari.GatewayBot:
@@ -456,8 +541,10 @@ class Cache:
 
     def listen(
         self,
-        event: type[hikari.Event] | None = None,
-    ) -> Callable[[Callable[[hikari.Event], Awaitable[None]]], None]:
+        event: EventT | None = None,
+        *,
+        confirm: bool = False,
+    ) -> Callable[[Callable[[EventT], Awaitable[None]]], Callable[[EventT], Awaitable[None]]]:
         """
         Listen for an event and add this method as a callback.
 
@@ -466,9 +553,14 @@ class Cache:
         event : type[hikari.Event] | None
             The event object to listen for, if provided, otherwise
             extracted from callback's first parameter type.
+        confirm : bool
+            If `True`, not dispatched until the cache has confirmed the change.
+            If `False`, dispatched as soon as the cache receives the event.
         """
 
-        def wrapper(func: Callable[[hikari.Event], Awaitable[None]]) -> None:
+        def wrapper(
+            func: Callable[[EventT], Awaitable[None]]
+        ) -> Callable[[EventT], Awaitable[None]]:
             nonlocal event
 
             if event is None:
@@ -500,17 +592,18 @@ class Cache:
 
                 event = annotation
 
-            if event in self._listeners:
-                self._listeners[event].append(func)
-            else:
-                self._listeners[event] = [func]
+            self._listeners.setdefault(event, []).append((func, confirm))
+
+            return func
 
         return wrapper
 
     def subscribe(
         self,
-        event: type[hikari.Event],
-        callback: Callable[[hikari.Event], Awaitable[None]],
+        event: EventT,
+        callback: Callable[[EventT], Awaitable[None]],
+        *,
+        confirm: bool = False,
     ) -> None:
         """
         Subscribe to an event with a handler callback.
@@ -521,12 +614,12 @@ class Cache:
             The event object to subscribe to.
         callback : Callable[[hikari.Event], Awaitable[None]]
             The handler callback method.
+        confirm : bool
+            If `True`, not dispatched until the cache has confirmed the change.
+            If `False`, dispatched as soon as the cache receives the event.
         """
 
-        if event in self._listeners:
-            self._listeners[event].append(callback)
-        else:
-            self._listeners[event] = [callback]
+        self._listeners.setdefault(event, []).append((callback, confirm))
 
     def unsubscribe(
         self,
@@ -547,7 +640,9 @@ class Cache:
         if event not in self._listeners:
             return
 
-        try:
-            self._listeners[event].remove(callback)
-        except ValueError:
-            return
+        for listener in list(self._listeners[event]):
+            if listener[0] != callback:
+                continue
+
+            self._listeners[event].remove(listener)
+            break

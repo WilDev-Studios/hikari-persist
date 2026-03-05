@@ -73,7 +73,9 @@ class SQLiteBackend(Backend):
         self._filepath: str = filepath
 
         self._writer: asyncio.Task[None] | None = None
-        self._queue: asyncio.Queue[tuple[str, tuple[Any]]] = asyncio.Queue()
+        self._queue: asyncio.Queue[
+            tuple[str, tuple[Any], asyncio.Future[None] | None]
+        ] = asyncio.Queue()
 
         self._ready: asyncio.Event = asyncio.Event()
 
@@ -144,18 +146,33 @@ class SQLiteBackend(Backend):
                 position    INTEGER NOT NULL
             );
         """)
-        await self._connection.executemany(
-            """
-            CREATE INDEX IF NOT EXISTS idx_channels_guild ON channels(guild);
-            CREATE INDEX IF NOT EXISTS idx_members_guild ON members(guild);
-            CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel);
-            CREATE INDEX IF NOT EXISTS idx_roles_guild ON roles(guild);
-            """
+        await self._connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_channels_guild ON channels(guild);"
+        )
+        await self._connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_members_guild ON members(guild);"
+        )
+        await self._connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel);"
+        )
+        await self._connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_roles_guild ON roles(guild);"
         )
         await self._connection.commit()
 
-    async def __execute(self, execute: str, values: tuple[Any]) -> None:
-        await self._queue.put((execute, values))
+    async def __execute(
+        self,
+        execute: str,
+        values: tuple[Any],
+        confirm: bool = False,
+    ) -> asyncio.Future[None] | None:
+        future: asyncio.Future[None] | None = None
+        if confirm:
+            future = asyncio.get_running_loop().create_future()
+
+        await self._queue.put((execute, values, future))
+
+        return future
 
     async def __version_get(self) -> int:
         async with self._connection.execute("PRAGMA user_version;") as cursor:
@@ -186,8 +203,8 @@ class SQLiteBackend(Backend):
     async def __writer(self) -> None:
         try:
             while True:
-                query: tuple[str, tuple[Any]] = await self._queue.get()
-                batch: list[tuple[str, tuple[Any]]] = [query]
+                query: tuple[str, tuple[Any], asyncio.Future[None] | None] = await self._queue.get()
+                batch: list[tuple[str, tuple[Any], asyncio.Future[None] | None]] = [query]
 
                 while not self._queue.empty():
                     try:
@@ -198,10 +215,20 @@ class SQLiteBackend(Backend):
                     except asyncio.QueueEmpty:
                         break
 
+                futures: list[asyncio.Future[None]] = []
+
                 await self._connection.execute("BEGIN")
-                for query in batch:
-                    await self._connection.execute(*query)
+                for sql, values, future in batch:
+                    await self._connection.execute(sql, values)
+                    if future:
+                        futures.append(future)
                 await self._connection.commit()
+
+                for future in futures:
+                    if future.done():
+                        continue
+
+                    future.set_result(None)
         except asyncio.CancelledError:
             return
 
@@ -389,8 +416,11 @@ class SQLiteBackend(Backend):
     async def channel_create(
         self,
         channel: hikari.PermissibleGuildChannel,
-    ) -> None:
-        await self.__execute(
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        futures: list[asyncio.Future[None]] = []
+
+        confirm_channel: asyncio.Future[None] | None = await self.__execute(
             """
                 INSERT INTO channels
                 (id, guild, category, type, created, name, nsfw, position, topic)
@@ -407,10 +437,11 @@ class SQLiteBackend(Backend):
                 channel.position,
                 getattr(channel, "topic", None),
             ),
+            confirm,
         )
 
         for overwrite in channel.permission_overwrites.values():
-            await self.__execute(
+            confirm_overwrite: asyncio.Future[None] | None = await self.__execute(
                 """
                     INSERT OR REPLACE INTO permission_overwrites
                     (channel_id, target_id, type, allow, deny)
@@ -423,22 +454,43 @@ class SQLiteBackend(Backend):
                     int(overwrite.allow),
                     int(overwrite.deny),
                 ),
+                confirm,
             )
+
+            if confirm:
+                futures.append(confirm_overwrite)
+
+        if confirm:
+            futures.append(confirm_channel)
+
+            return asyncio.gather(*futures, return_exceptions=True)
+
+        return None
 
     async def channel_delete(
         self,
         channel_id: hikari.Snowflake,
-    ) -> None:
-        await self.__execute(
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        future: asyncio.Future[None] | None = await self.__execute(
             "DELETE FROM channels WHERE id = ?;",
             (channel_id,),
+            confirm,
         )
+
+        if confirm:
+            return future
+
+        return None
 
     async def channel_update(
         self,
         channel: hikari.PermissibleGuildChannel,
-    ) -> None:
-        await self.__execute(
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        futures: list[asyncio.Future[None]] = []
+
+        confirm_channel: asyncio.Future[None] | None = await self.__execute(
             """
                 UPDATE channels SET category = ?, name = ?, nsfw = ?, position = ?, topic = ?
                 WHERE id = ?;
@@ -451,15 +503,17 @@ class SQLiteBackend(Backend):
                 getattr(channel, "topic", None),
                 channel.id,
             ),
+            confirm,
         )
 
-        await self.__execute(
+        confirm_delete: asyncio.Future[None] | None = await self.__execute(
             "DELETE FROM permission_overwrites WHERE channel_id = ?;",
             (channel.id,),
+            confirm,
         )
 
         for overwrite in channel.permission_overwrites.values():
-            await self.__execute(
+            confirm_overwrite: asyncio.Future[None] | None = await self.__execute(
                 """
                     INSERT OR REPLACE INTO permission_overwrites
                     (channel_id, target_id, type, allow, deny)
@@ -471,14 +525,27 @@ class SQLiteBackend(Backend):
                     int(overwrite.type),
                     int(overwrite.allow),
                     int(overwrite.deny),
-                )
+                ),
+                confirm,
             )
+
+            if confirm:
+                futures.append(confirm_overwrite)
+
+        if confirm:
+            futures.append(confirm_channel)
+            futures.append(confirm_delete)
+
+            return asyncio.gather(*futures, return_exceptions=True)
+
+        return None
 
     async def guild_join(
         self,
         guild: hikari.GatewayGuild,
-    ) -> None:
-        await self.__execute(
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        future: asyncio.Future[None] | None = await self.__execute(
             """
                 INSERT OR REPLACE INTO guilds
                 (id, name, description, owner, created)
@@ -490,32 +557,53 @@ class SQLiteBackend(Backend):
                 guild.description,
                 guild.owner_id,
                 guild.created_at.timestamp(),
-            )
+            ),
+            confirm,
         )
+
+        if confirm:
+            return future
+
+        return None
 
     async def guild_leave(
         self,
         guild_id: hikari.Snowflake,
-    ) -> None:
-        await self.__execute(
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        future: asyncio.Future[None] | None = await self.__execute(
             "DELETE FROM guilds WHERE id = ?;",
             (guild_id,),
+            confirm,
         )
+
+        if confirm:
+            return future
+
+        return None
 
     async def guild_update(
         self,
         guild: hikari.GatewayGuild,
-    ) -> None:
-        await self.__execute(
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        future: asyncio.Future[None] | None = await self.__execute(
             "UPDATE guilds SET name = ?, description = ? WHERE id = ?;",
             (guild.name, guild.description, guild.id,),
+            confirm,
         )
+
+        if confirm:
+            return future
+
+        return None
 
     async def member_create(
         self,
         member: hikari.Member,
-    ) -> None:
-        await self.__execute(
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        future: asyncio.Future[None] | None = await self.__execute(
             """
                 INSERT OR REPLACE INTO members
                 (id, guild, username, discriminator, created, joined, nickname, roles)
@@ -531,23 +619,37 @@ class SQLiteBackend(Backend):
                 member.nickname,
                 ','.join(str(role) for role in member.role_ids) if member.role_ids else None,
             ),
+            confirm,
         )
+
+        if confirm:
+            return future
+
+        return None
 
     async def member_delete(
         self,
         user_id: hikari.Snowflake,
         guild_id: hikari.Snowflake,
-    ) -> None:
-        await self.__execute(
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        future: asyncio.Future[None] | None = await self.__execute(
             "DELETE FROM members WHERE id = ? AND guild = ?;",
             (user_id, guild_id,),
+            confirm,
         )
+
+        if confirm:
+            return future
+
+        return None
 
     async def member_update(
         self,
         member: hikari.Member,
-    ) -> None:
-        await self.__execute(
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        future: asyncio.Future[None] = await self.__execute(
             """
                 UPDATE members SET username = ?, discriminator = ?, nickname = ?, roles = ?
                 WHERE id = ? AND guild = ?;
@@ -560,36 +662,57 @@ class SQLiteBackend(Backend):
                 member.id,
                 member.guild_id,
             ),
+            confirm,
         )
+
+        if confirm:
+            return future
+
+        return None
 
     async def message_create(
         self,
         message: hikari.Message,
-    ) -> None:
-        await self.__execute(
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        future: asyncio.Future[None] | None = await self.__execute(
             "INSERT OR REPLACE INTO messages (id, channel, guild, content) VALUES (?, ?, ?, ?);",
             (
                 message.id,
                 message.channel_id,
                 message.guild_id,
                 message.content,
-            )
+            ),
+            confirm,
         )
+
+        if confirm:
+            return future
+
+        return None
 
     async def message_delete(
         self,
         message_id: hikari.Snowflake,
         channel_id: hikari.Snowflake,
-    ) -> None:
-        await self.__execute(
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        future: asyncio.Future[None] | None = await self.__execute(
             "DELETE FROM messages WHERE id = ? AND channel = ?;",
             (message_id, channel_id,),
+            confirm,
         )
+
+        if confirm:
+            return future
+
+        return None
 
     async def message_update(
         self,
         message: hikari.PartialMessage,
-    ) -> None:
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         fields: list[str] = []
         values: list[object] = []
 
@@ -598,20 +721,27 @@ class SQLiteBackend(Backend):
             values.append(message.content)
 
         if not fields:
-            return
+            return None
 
         values.extend((message.id, message.channel_id))
 
-        await self.__execute(
+        future: asyncio.Future[None] | None = await self.__execute(
             f"UPDATE messages SET {', '.join(fields)} WHERE id = ? AND channel = ?;",
             tuple(values),
+            confirm,
         )
+
+        if confirm:
+            return future
+
+        return None
 
     async def role_create(
         self,
         role: hikari.Role,
-    ) -> None:
-        await self.__execute(
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        future: asyncio.Future[None] | None = await self.__execute(
             """
                 INSERT OR REPLACE INTO roles
                 (id, guild, name, color, permissions, created, position)
@@ -625,23 +755,43 @@ class SQLiteBackend(Backend):
                 int(role.permissions),
                 role.created_at.timestamp(),
                 role.position,
-            )
+            ),
+            confirm,
         )
+
+        if confirm:
+            return future
+
+        return None
 
     async def role_delete(
         self,
         role_id: hikari.Snowflake,
-    ) -> None:
-        await self.__execute(
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        future: asyncio.Future[None] | None = await self.__execute(
             "DELETE FROM roles WHERE id = ?;",
             (role_id,),
+            confirm,
         )
+
+        if confirm:
+            return future
+
+        return None
 
     async def role_update(
         self,
         role: hikari.Role,
-    ) -> None:
-        await self.__execute(
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        future: asyncio.Future[None] | None = await self.__execute(
             "UPDATE roles SET name = ?, color = ?, permissions = ?, position = ? WHERE id = ?;",
             (role.name, int(role.color), int(role.permissions), role.position, role.id,),
+            confirm,
         )
+
+        if confirm:
+            return future
+
+        return None

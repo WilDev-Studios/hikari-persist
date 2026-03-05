@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from hikaripersist.cached.message import CachedMessage
     from hikaripersist.cached.role import CachedRole
 
+    import asyncio
     import hikari
 
 __all__ = ("Backend",)
@@ -142,7 +143,8 @@ class Backend(ABC):
     async def channel_create(
         self,
         channel: hikari.PermissibleGuildChannel,
-    ) -> None:
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         """
         Store a created channel.
 
@@ -150,13 +152,23 @@ class Backend(ABC):
         ----------
         channel : hikari.PermissibleGuildChannel
             The created channel to store.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
         """
 
     @abstractmethod
     async def channel_delete(
         self,
         channel_id: hikari.Snowflake,
-    ) -> None:
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         """
         Remove a deleted channel.
 
@@ -164,13 +176,23 @@ class Backend(ABC):
         ----------
         channel_id : hikari.Snowflake
             The ID of the channel that was deleted.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
         """
 
     @abstractmethod
     async def channel_update(
         self,
         channel: hikari.PermissibleGuildChannel,
-    ) -> None:
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         """
         Update an updated channel.
 
@@ -178,13 +200,23 @@ class Backend(ABC):
         ----------
         channel : hikari.PermissibleGuildChannel
             The updated channel to update.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
         """
 
     @abstractmethod
     async def guild_join(
         self,
         guild: hikari.GatewayGuild,
-    ) -> None:
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         """
         Store a joined guild.
 
@@ -192,13 +224,23 @@ class Backend(ABC):
         ----------
         guild : hikari.GatewayGuild
             The guild that was joined.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
         """
 
     @abstractmethod
     async def guild_leave(
         self,
         guild_id: hikari.Snowflake,
-    ) -> None:
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         """
         Remove a left guild.
 
@@ -206,13 +248,23 @@ class Backend(ABC):
         ----------
         guild_id : hikari.Snowflake
             The ID of the guild that was left.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
         """
 
     @abstractmethod
     async def guild_update(
         self,
         guild: hikari.GatewayGuild,
-    ) -> None:
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         """
         Update an updated guild.
 
@@ -220,13 +272,23 @@ class Backend(ABC):
         ----------
         guild : hikari.GatewayGuild
             The updated guild to update.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
         """
 
     @abstractmethod
     async def member_create(
         self,
         member: hikari.Member,
-    ) -> None:
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         """
         Store a created member.
 
@@ -234,6 +296,15 @@ class Backend(ABC):
         ----------
         member : hikari.Member
             The created member to store.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
         """
 
     @abstractmethod
@@ -241,7 +312,8 @@ class Backend(ABC):
         self,
         user_id: hikari.Snowflake,
         guild_id: hikari.Snowflake,
-    ) -> None:
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         """
         Remove a deleted member.
 
@@ -251,13 +323,23 @@ class Backend(ABC):
             The ID of the user that left/was deleted.
         guild_id : hikari.Snowflake
             The ID of the guild that the user left.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
         """
 
     @abstractmethod
     async def member_update(
         self,
         member: hikari.Member,
-    ) -> None:
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         """
         Update an updated member.
 
@@ -265,13 +347,23 @@ class Backend(ABC):
         ----------
         member : hikari.Member
             The updated member to update.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
         """
 
     @abstractmethod
     async def message_create(
         self,
         message: hikari.Message,
-    ) -> None:
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         """
         Store a created message.
 
@@ -279,6 +371,15 @@ class Backend(ABC):
         ----------
         message : hikari.Message
             The created message to store.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
         """
 
     @abstractmethod
@@ -286,7 +387,8 @@ class Backend(ABC):
         self,
         message_id: hikari.Snowflake,
         channel_id: hikari.Snowflake,
-    ) -> None:
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         """
         Remove a deleted message.
 
@@ -296,13 +398,23 @@ class Backend(ABC):
             The ID of the message that was deleted.
         channel_id : hikari.Snowflake
             The ID of the channel in which the message was deleted.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
         """
 
     @abstractmethod
     async def message_update(
         self,
         message: hikari.PartialMessage,
-    ) -> None:
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         """
         Update an updated message.
 
@@ -310,13 +422,23 @@ class Backend(ABC):
         ----------
         message : hikari.PartialMessage
             The updated message to update.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
         """
 
     @abstractmethod
     async def role_create(
         self,
         role: hikari.Role,
-    ) -> None:
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         """
         Store a created role.
 
@@ -324,13 +446,23 @@ class Backend(ABC):
         ----------
         role : hikari.Role
             The created role to store.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
         """
 
     @abstractmethod
     async def role_delete(
         self,
         role_id: hikari.Snowflake,
-    ) -> None:
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         """
         Remove a deleted role.
 
@@ -338,13 +470,23 @@ class Backend(ABC):
         ----------
         role_id : hikari.Snowflake
             The ID of the role that was deleted.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
         """
 
     @abstractmethod
     async def role_update(
         self,
         role: hikari.Role,
-    ) -> None:
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
         """
         Update an updated role.
 
@@ -352,4 +494,13 @@ class Backend(ABC):
         ----------
         role : hikari.Role
             The updated role to update.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
         """

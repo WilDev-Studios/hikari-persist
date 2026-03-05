@@ -6,7 +6,7 @@
     <img src="https://img.shields.io/pypi/dm/hikari-persist?style=for-the-badge&color=007EC6"/><br/>
     <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=for-the-badge&color=002F4B"/>
     <img src="https://img.shields.io/readthedocs/hikari-persist?style=for-the-badge&color=002F4B"/>
-    <img src="https://img.shields.io/github/actions/workflow/status/WilDev-Studios/hikari-persist/build.yml?branch=main&style=for-the-badge&label=Build/Tests&color=002F4B">
+    <!--<img src="https://img.shields.io/github/actions/workflow/status/WilDev-Studios/hikari-persist/build.yml?branch=main&style=for-the-badge&label=Build/Tests&color=002F4B">-->
     <img src="https://img.shields.io/pypi/status/hikari-persist?style=for-the-badge&color=002F4B"/>
 </p>
 
@@ -70,30 +70,56 @@ bot.run()
 To ensure that the cache sees all event data before being handled, the cache acts as a middle-man in event dispatching.
 Instead of using `@bot.listen()`, use `@cache.listen()` and the cache will dispatch each event normally after it's complete.
 
-Due to batched, asynchronous writes, newly cached objects may not be immediately visible to database reads.
-The cache is optimized for persistence and session recovery rather than strict, real-time consistency.
+```python
+@cache.listen() # <- note `cache` not `bot`
+async def event_listener(event: hikari.Event):
+    ...
+```
 
-Because of the nature of asynchronous, batched databases, there's a small window in which a cached object isn't visible in the database.
-The purpose of this persistent cache is to provide a way to store data between bot sessions/restarts, not be immediately accessible (although quick regardless).
+This approach works well for most operations, however, due to the nature of asynchronous, batched databases, the cache is not guaranteed to have the changes complete by the time the event is dispatched. To ensure the cache is properly changed before you see the event, pass `confirm=True` into the decorator.
+
+```python
+@cache.listen(confirm=True) # <- confirm=True
+async def event_listener(event: hikari.Event):
+    ...
+```
+
+The difference between the two is this:
 
 ```python
 @cache.listen()
-async def message_create(event: hikari.GuildMessageCreateEvent):
-    original: str = event.message.content
+async def event_listener_1(event: hikari.GuildMessageCreateEvent):
+    message = await cache.get_message(event.message_id, event.channel_id)
 
-    await asyncio.sleep(5) # arbitrary
+    print(message)
 
-    message: CachedMessage = await cache.get_message(event.message_id, event.channel_id)
-    cached: str = message.content
+@cache.listen(confirm=True)
+async def event_listener_2(event: hikari.GuildMessageCreateEvent):
+    message = await cache.get_message(event.message_id, event.channel_id)
 
-    assert original == cached
+    print(message)
 ```
+
+```bash
+>>> None (or sometimes `persist.CachedMessage`)
+>>> `persist.CachedMessage`
+```
+
+The `confirm=True` ensures the cache is up to date before dispatching the event. Otherwise, it's not guaranteed.
+
+Most implementations will not need to worry about this, but it's here just in case it's necessary.
+The confirmation logic does introduce slight latency to the event dispatch, but it's negligible unless you worry about real-time performance.
+
+TL;DR:
+- `confirm=False` (or omitted): Fire-and-forget (default, very fast)
+- `confirm-True`: Waits for database write to complete (slight latency)
 
 ## Implemented Features
 
 - [X] Basic objects (messages, channels, guilds, members, etc.)
 - [ ] Advanced lookups (batches, search, filter)
 - [ ] Advanced object metadata
+- [ ] Opt-in hydration (cache fail -> REST fetch)
 - [ ] In-memory, temporary cache
 - Database backends:
     - [X] SQLite
