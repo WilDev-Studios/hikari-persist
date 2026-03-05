@@ -124,6 +124,8 @@ TL;DR:
     - [X] SQLite
     - [ ] MySQL
     - [ ] PostgreSQL
+    - [ ] Redis
+    - [ ] JSON
 
 ## Library Lifecycle
 

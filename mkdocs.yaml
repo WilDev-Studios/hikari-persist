@@ -83,6 +83,7 @@ nav:
     - hikaripersist: pages/api/rule.md
   - Changelog:
     - Index: pages/changelog/index.md
+    - 0.1.0a3: pages/changelog/0.1.0a3.md
     - 0.1.0a2: pages/changelog/0.1.0a2.md
     - 0.1.0a1: pages/changelog/0.1.0a1.md
   - Lifecycle: pages/lifecycle.md

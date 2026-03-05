@@ -3,10 +3,12 @@ __all__ = (
     "CachedGuild",
     "CachedMember",
     "CachedMessage",
+    "CachedObject",
     "CachedPermissionOverwrite",
     "CachedRole",
 )
 
+from hikaripersist.cached.base import CachedObject
 from hikaripersist.cached.channel import (
     CachedChannel,
     CachedPermissionOverwrite,

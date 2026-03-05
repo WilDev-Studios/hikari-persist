@@ -10,6 +10,7 @@ from hikaripersist.cached.guild import CachedGuild
 from hikaripersist.cached.member import CachedMember
 from hikaripersist.cached.message import CachedMessage
 from hikaripersist.cached.role import CachedRole
+from hikaripersist.impl.iterator import CacheIterator
 from hikaripersist.rule import Rule
 from typing import (
     ClassVar,
@@ -407,6 +408,20 @@ class Cache:
 
         return await self._backend.get_channel(channel_id)
 
+    async def get_channels(
+        self,
+    ) -> CacheIterator[CachedChannel]:
+        """
+        Retrieve all channels.
+
+        Returns
+        -------
+        CacheIterator[CachedChannel]
+            An asynchronous iterator used in the processing of each channel.
+        """
+
+        return await self._backend.iter_channels()
+
     async def get_guild(
         self,
         guild_id: hikari.Snowflakeish,
@@ -435,6 +450,20 @@ class Cache:
             raise TypeError(error)
 
         return await self._backend.get_guild(guild_id)
+
+    async def get_guilds(
+        self,
+    ) -> CacheIterator[CachedGuild]:
+        """
+        Retrieve all guilds.
+
+        Returns
+        -------
+        CacheIterator[CachedGuild]
+            An asynchronous iterator used in the processing of each guild.
+        """
+
+        return await self._backend.iter_guilds()
 
     async def get_member(
         self,
@@ -473,6 +502,26 @@ class Cache:
 
         return await self._backend.get_member(user_id, guild_id)
 
+    async def get_members(
+        self,
+        guild_id: hikari.Snowflake,
+    ) -> CacheIterator[CachedMember]:
+        """
+        Retrieve all guild members.
+
+        Parameters
+        ----------
+        guild_id : hikari.Snowflake
+            The ID of the guild containing the members.
+
+        Returns
+        -------
+        CacheIterator[CachedMember]
+            An asynchronous iterator used in the processing of each member.
+        """
+
+        return await self._backend.iter_members(guild_id)
+
     async def get_message(
         self,
         message_id: hikari.Snowflakeish,
@@ -510,6 +559,26 @@ class Cache:
 
         return await self._backend.get_message(message_id, channel_id)
 
+    async def get_messages(
+        self,
+        channel_id: hikari.Snowflake,
+    ) -> CacheIterator[CachedMessage]:
+        """
+        Retrieve all channel messages.
+
+        Parameters
+        ----------
+        channel_id : hikari.Snowflake
+            The ID of the channel containing the messages.
+
+        Returns
+        -------
+        CacheIterator[CachedMessage]
+            An asynchronous iterator used in the processing of each message.
+        """
+
+        return await self._backend.iter_messages(channel_id)
+
     async def get_role(
         self,
         role_id: hikari.Snowflakeish,
@@ -538,6 +607,26 @@ class Cache:
             raise TypeError(error)
 
         return await self._backend.get_role(role_id)
+
+    async def get_roles(
+        self,
+        guild_id: hikari.Snowflake,
+    ) -> CacheIterator[CachedRole]:
+        """
+        Retrieve all guild roles.
+
+        Parameters
+        ----------
+        guild_id : hikari.Snowflake
+            The ID of the guild containing the roles.
+
+        Returns
+        -------
+        CacheIterator[CachedRole]
+            An asynchronous iterator used in the processing of each role.
+        """
+
+        return await self._backend.iter_roles(guild_id)
 
     def listen(
         self,

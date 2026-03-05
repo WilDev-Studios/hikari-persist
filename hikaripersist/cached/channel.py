@@ -2,12 +2,17 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import (
+    datetime,
+    timezone,
+)
+from hikaripersist.cached.base import CachedObject
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from datetime import datetime
+import hikari
 
-    import hikari
+if TYPE_CHECKING:
+    import aiosqlite
 
 __all__ = (
     "CachedChannel",
@@ -15,7 +20,7 @@ __all__ = (
 )
 
 @dataclass(frozen=True, slots=True)
-class CachedChannel:
+class CachedChannel(CachedObject):
     """Represents a guild channel in persistent cache."""
 
     id: hikari.Snowflake
@@ -39,6 +44,25 @@ class CachedChannel:
     permission_overwrites: Mapping[hikari.Snowflake, CachedPermissionOverwrite]
     """Any overwriting permissions of the channel, if they exist."""
 
+    @classmethod
+    def from_sqlite(
+        cls: type[CachedChannel],
+        row: aiosqlite.Row,
+        overwrites: Mapping[hikari.Snowflake, CachedPermissionOverwrite],
+    ) -> CachedChannel:
+        return CachedChannel(
+            row[0],
+            row[1],
+            row[2],
+            hikari.ChannelType(row[3]),
+            datetime.fromtimestamp(row[4], timezone.utc),
+            row[5],
+            bool(row[6]) if row[6] is not None else None,
+            row[7],
+            row[8],
+            overwrites,
+        )
+
 @dataclass(frozen=True, slots=True)
 class CachedPermissionOverwrite:
     """Represents a guild channel permission overwrite."""
@@ -53,3 +77,16 @@ class CachedPermissionOverwrite:
     """The allowed permissions in the overwrite."""
     deny: hikari.Permissions
     """The denied permissions in the overwrite."""
+
+    @classmethod
+    def from_sqlite(
+        cls: type[CachedPermissionOverwrite],
+        row: aiosqlite.Row,
+    ) -> CachedPermissionOverwrite:
+        return cls(
+            row[0],
+            row[1],
+            hikari.PermissionOverwriteType(row[2]),
+            hikari.Permissions(row[3]),
+            hikari.Permissions(row[4]),
+        )

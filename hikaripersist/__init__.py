@@ -10,10 +10,12 @@ __version__ = "0.1.0a2"
 __all__ = (  # noqa: RUF022
     "Backend",
     "Cache",
+    "CacheIterator",
     "CachedChannel",
     "CachedGuild",
     "CachedMember",
     "CachedMessage",
+    "CachedObject",
     "CachedPermissionOverwrite",
     "CachedRole",
     "CacheMessageCreateEvent",
@@ -37,10 +39,12 @@ from hikaripersist.cached import (
     CachedGuild,
     CachedMember,
     CachedMessage,
+    CachedObject,
     CachedPermissionOverwrite,
     CachedRole,
 )
 from hikaripersist.cache import Cache
+from hikaripersist.impl import CacheIterator
 from hikaripersist.rule import (
     ChannelRule,
     GuildRule,

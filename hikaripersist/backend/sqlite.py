@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
-from contextlib import suppress
-from datetime import (
-    datetime,
-    timezone,
+from collections.abc import (
+    AsyncIterator,
+    Iterable,
 )
+from contextlib import suppress
 from hikaripersist.backend.base import Backend
 from hikaripersist.cached.channel import (
     CachedChannel,
@@ -31,7 +30,7 @@ __all__ = ("SQLiteBackend",)
 
 logger: logging.Logger = logging.getLogger("persist.sqlite")
 
-WRITER_THRESHOLD: int = 500
+BATCH_SIZE: int = 500
 
 class SQLiteBackend(Backend):
     """Use `SQLite` as the persistent cache backend."""
@@ -210,7 +209,7 @@ class SQLiteBackend(Backend):
                     try:
                         batch.append(self._queue.get_nowait())
 
-                        if len(batch) >= WRITER_THRESHOLD:
+                        if len(batch) >= BATCH_SIZE:
                             break
                     except asyncio.QueueEmpty:
                         break
@@ -231,187 +230,6 @@ class SQLiteBackend(Backend):
                     future.set_result(None)
         except asyncio.CancelledError:
             return
-
-    async def connect(self) -> None:
-        logger.debug(f"Connecting to SQLite database at {self._filepath}")
-
-        self._connection = await aiosqlite.connect(self._filepath)
-
-        await self._connection.execute("PRAGMA foreign_keys=ON;")
-        await self._connection.execute("PRAGMA journal_mode=WAL;")
-        await self._connection.execute("PRAGMA synchronous=NORMAL;")
-        await self._connection.execute("PRAGMA temp_store=MEMORY;")
-        await self._connection.execute("PRAGMA mmap_size=300000000000;")
-        await self._connection.commit()
-
-        version: int | None = await self.__version_get()
-
-        if version != SQLiteBackend.VERSION:
-            await self.__version_migrate(version)
-
-        self._writer = asyncio.create_task(self.__writer(), name="sqlite-writer")
-        self._ready.set()
-
-        logger.info("Connected to SQLite cache database")
-
-    async def disconnect(self) -> None:
-        if self._writer:
-            self._writer.cancel()
-
-            with suppress(asyncio.CancelledError):
-                await self._writer
-
-        remaining: list[tuple[str, tuple[Any]]] = []
-        while not self._queue.empty():
-            remaining.append(await self._queue.get())
-
-        if remaining:
-            async with self._connection.execute("BEGIN"):
-                for query in remaining:
-                    await self._connection.execute(*query)
-
-                await self._connection.commit()
-
-        await self._connection.close()
-
-        logger.info("Disconnected from SQLite cache database")
-
-    async def get_channel(
-        self,
-        channel_id: hikari.Snowflake,
-    ) -> CachedChannel | None:
-        await self._ready.wait()
-
-        async with self._connection.execute(
-            "SELECT * FROM channels WHERE id = ?;",
-            (channel_id,),
-        ) as cursor:
-            channel_result: aiosqlite.Row | None = await cursor.fetchone()
-
-        if not channel_result:
-            return None
-
-        async with self._connection.execute(
-            "SELECT * FROM permission_overwrites WHERE channel_id = ?;",
-            (channel_id,),
-        ) as cursor:
-            permissions_result: Iterable[aiosqlite.Row] = await cursor.fetchall()
-
-        overwrites: dict[hikari.Snowflake, CachedPermissionOverwrite] = {}
-        for row in permissions_result:
-            overwrites[row[1]] = CachedPermissionOverwrite(
-                row[0],
-                row[1],
-                hikari.PermissionOverwriteType(row[2]),
-                hikari.Permissions(row[3]),
-                hikari.Permissions(row[4]),
-            )
-
-        return CachedChannel(
-            channel_result[0],
-            channel_result[1],
-            channel_result[2],
-            hikari.ChannelType(channel_result[3]),
-            datetime.fromtimestamp(channel_result[4], timezone.utc),
-            channel_result[5],
-            bool(channel_result[6]) if channel_result[6] is not None else None,
-            channel_result[7],
-            channel_result[8],
-            overwrites,
-        )
-
-    async def get_guild(
-        self,
-        guild_id: hikari.Snowflake,
-    ) -> CachedGuild | None:
-        await self._ready.wait()
-
-        async with self._connection.execute(
-            "SELECT * FROM guilds WHERE id = ?;",
-            (guild_id,),
-        ) as cursor:
-            result: aiosqlite.Row | None = await cursor.fetchone()
-
-        if not result:
-            return None
-
-        return CachedGuild(
-            result[0],
-            result[1],
-            result[2],
-            result[3],
-            datetime.fromtimestamp(result[4], timezone.utc),
-        )
-
-    async def get_member(
-        self,
-        user_id: hikari.Snowflake,
-        guild_id: hikari.Snowflake,
-    ) -> CachedMember | None:
-        await self._ready.wait()
-
-        async with self._connection.execute(
-            "SELECT * FROM members WHERE id = ? AND guild = ?;",
-            (user_id, guild_id,),
-        ) as cursor:
-            result: aiosqlite.Row | None = await cursor.fetchone()
-
-        if not result:
-            return None
-
-        return CachedMember(
-            result[0],
-            result[1],
-            result[2],
-            result[3],
-            datetime.fromtimestamp(result[4], timezone.utc),
-            datetime.fromtimestamp(result[5], timezone.utc),
-            result[6],
-            {hikari.Snowflake(role) for role in result[7].split(',')} if result[7] else set(),
-        )
-
-    async def get_message(
-        self,
-        message_id: hikari.Snowflake,
-        channel_id: hikari.Snowflake,
-    ) -> CachedMessage | None:
-        await self._ready.wait()
-
-        async with self._connection.execute(
-            "SELECT * FROM messages WHERE id = ? AND channel = ?;",
-            (message_id, channel_id,),
-        ) as cursor:
-            result: aiosqlite.Row | None = await cursor.fetchone()
-
-        if not result:
-            return None
-
-        return CachedMessage(*result)
-
-    async def get_role(
-        self,
-        role_id: hikari.Snowflake,
-    ) -> CachedRole | None:
-        await self._ready.wait()
-
-        async with self._connection.execute(
-            "SELECT * FROM roles WHERE id = ?;",
-            (role_id,),
-        ) as cursor:
-            result: aiosqlite.Row | None = await cursor.fetchone()
-
-        if not result:
-            return None
-
-        return CachedRole(
-            result[0],
-            result[1],
-            result[2],
-            hikari.Color(result[3]),
-            hikari.Permissions(result[4]),
-            datetime.fromtimestamp(result[5], timezone.utc),
-            result[6],
-        )
 
     async def channel_create(
         self,
@@ -540,6 +358,147 @@ class SQLiteBackend(Backend):
 
         return None
 
+    async def connect(self) -> None:
+        logger.debug(f"Connecting to SQLite database at {self._filepath}")
+
+        self._connection = await aiosqlite.connect(self._filepath)
+
+        await self._connection.execute("PRAGMA foreign_keys=ON;")
+        await self._connection.execute("PRAGMA journal_mode=WAL;")
+        await self._connection.execute("PRAGMA synchronous=NORMAL;")
+        await self._connection.execute("PRAGMA temp_store=MEMORY;")
+        await self._connection.execute("PRAGMA mmap_size=300000000000;")
+        await self._connection.commit()
+
+        version: int | None = await self.__version_get()
+
+        if version != SQLiteBackend.VERSION:
+            await self.__version_migrate(version)
+
+        self._writer = asyncio.create_task(self.__writer(), name="sqlite-writer")
+        self._ready.set()
+
+        logger.info("Connected to SQLite cache database")
+
+    async def disconnect(self) -> None:
+        if self._writer:
+            self._writer.cancel()
+
+            with suppress(asyncio.CancelledError):
+                await self._writer
+
+        remaining: list[tuple[str, tuple[Any]]] = []
+        while not self._queue.empty():
+            remaining.append(await self._queue.get())
+
+        if remaining:
+            async with self._connection.execute("BEGIN"):
+                for query in remaining:
+                    await self._connection.execute(*query)
+
+                await self._connection.commit()
+
+        await self._connection.close()
+
+        logger.info("Disconnected from SQLite cache database")
+
+    async def get_channel(
+        self,
+        channel_id: hikari.Snowflake,
+    ) -> CachedChannel | None:
+        await self._ready.wait()
+
+        async with self._connection.execute(
+            "SELECT * FROM channels WHERE id = ?;",
+            (channel_id,),
+        ) as cursor:
+            channel_result: aiosqlite.Row | None = await cursor.fetchone()
+
+        if not channel_result:
+            return None
+
+        async with self._connection.execute(
+            "SELECT * FROM permission_overwrites WHERE channel_id = ?;",
+            (channel_id,),
+        ) as cursor:
+            permissions_result: Iterable[aiosqlite.Row] = await cursor.fetchall()
+
+        overwrites: dict[hikari.Snowflake, CachedPermissionOverwrite] = {}
+        for row in permissions_result:
+            overwrites[row[1]] = CachedPermissionOverwrite.from_sqlite(row)
+
+        return CachedChannel.from_sqlite(channel_result, overwrites)
+
+    async def get_guild(
+        self,
+        guild_id: hikari.Snowflake,
+    ) -> CachedGuild | None:
+        await self._ready.wait()
+
+        async with self._connection.execute(
+            "SELECT * FROM guilds WHERE id = ?;",
+            (guild_id,),
+        ) as cursor:
+            result: aiosqlite.Row | None = await cursor.fetchone()
+
+        if not result:
+            return None
+
+        return CachedGuild.from_sqlite(result)
+
+    async def get_member(
+        self,
+        user_id: hikari.Snowflake,
+        guild_id: hikari.Snowflake,
+    ) -> CachedMember | None:
+        await self._ready.wait()
+
+        async with self._connection.execute(
+            "SELECT * FROM members WHERE id = ? AND guild = ?;",
+            (user_id, guild_id,),
+        ) as cursor:
+            result: aiosqlite.Row | None = await cursor.fetchone()
+
+        if not result:
+            return None
+
+        return CachedMember.from_sqlite(result)
+
+    async def get_message(
+        self,
+        message_id: hikari.Snowflake,
+        channel_id: hikari.Snowflake,
+    ) -> CachedMessage | None:
+        await self._ready.wait()
+
+        async with self._connection.execute(
+            "SELECT * FROM messages WHERE id = ? AND channel = ?;",
+            (message_id, channel_id,),
+        ) as cursor:
+            result: aiosqlite.Row | None = await cursor.fetchone()
+
+        if not result:
+            return None
+
+        return CachedMessage.from_sqlite(result)
+
+    async def get_role(
+        self,
+        role_id: hikari.Snowflake,
+    ) -> CachedRole | None:
+        await self._ready.wait()
+
+        async with self._connection.execute(
+            "SELECT * FROM roles WHERE id = ?;",
+            (role_id,),
+        ) as cursor:
+            result: aiosqlite.Row | None = await cursor.fetchone()
+
+        if not result:
+            return None
+
+        return CachedRole.from_sqlite(result)
+
     async def guild_join(
         self,
         guild: hikari.GatewayGuild,
@@ -597,6 +556,101 @@ class SQLiteBackend(Backend):
             return future
 
         return None
+
+    async def iter_channels(
+        self,
+    ) -> AsyncIterator[CachedChannel]:
+        await self._ready.wait()
+
+        async with self._connection.execute(
+            "SELECT * FROM channels;",
+        ) as cursor:
+            while True:
+                cresult: Iterable[aiosqlite.Row] = await cursor.fetchmany(BATCH_SIZE)
+                if not cresult:
+                    break
+
+                for row in cresult:
+                    async with self._connection.execute(
+                        "SELECT * FROM permission_overwrites WHERE channel_id = ?;",
+                        (row[0],),
+                    ) as pcursor:
+                        presult: Iterable[aiosqlite.Row] = await pcursor.fetchall()
+
+                    yield CachedChannel.from_sqlite(
+                        row,
+                        {row[1]: CachedPermissionOverwrite.from_sqlite(row) for row in presult}
+                    )
+
+    async def iter_guilds(
+        self,
+    ) -> AsyncIterator[CachedGuild]:
+        await self._ready.wait()
+
+        async with self._connection.execute(
+            "SELECT * FROM guilds;",
+        ) as cursor:
+            while True:
+                result: Iterable[aiosqlite.Row] = await cursor.fetchmany(BATCH_SIZE)
+                if not result:
+                    break
+
+                for row in result:
+                    yield CachedGuild.from_sqlite(row)
+
+    async def iter_members(
+        self,
+        guild_id: hikari.Snowflake,
+    ) -> AsyncIterator[CachedMember]:
+        await self._ready.wait()
+
+        async with self._connection.execute(
+            "SELECT * FROM members WHERE guild = ?;",
+            (guild_id,),
+        ) as cursor:
+            while True:
+                result: Iterable[aiosqlite.Row] = await cursor.fetchmany(BATCH_SIZE)
+                if not result:
+                    break
+
+                for row in result:
+                    yield CachedMember.from_sqlite(row)
+
+    async def iter_messages(
+        self,
+        channel_id: hikari.Snowflake,
+    ) -> AsyncIterator[CachedMessage]:
+        await self._ready.wait()
+
+        async with self._connection.execute(
+            "SELECT * FROM messages WHERE channel = ?;",
+            (channel_id,),
+        ) as cursor:
+            while True:
+                result: Iterable[aiosqlite.Row] = await cursor.fetchmany(BATCH_SIZE)
+                if not result:
+                    break
+
+                for row in result:
+                    yield CachedMessage.from_sqlite(row)
+
+    async def iter_roles(
+        self,
+        guild_id: hikari.Snowflake,
+    ) -> AsyncIterator[CachedRole]:
+        await self._ready.wait()
+
+        async with self._connection.execute(
+            "SELECT * FROM roles WHERE guild = ?;",
+            (guild_id,),
+        ) as cursor:
+            while True:
+                result: Iterable[aiosqlite.Row] = await cursor.fetchmany(BATCH_SIZE)
+                if not result:
+                    break
+
+                for row in result:
+                    yield CachedRole.from_sqlite(row)
 
     async def member_create(
         self,

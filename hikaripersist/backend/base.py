@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -17,6 +18,78 @@ __all__ = ("Backend",)
 
 class Backend(ABC):
     """Base persistent cache backend."""
+
+    @abstractmethod
+    async def channel_create(
+        self,
+        channel: hikari.PermissibleGuildChannel,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        """
+        Store a created channel.
+
+        Parameters
+        ----------
+        channel : hikari.PermissibleGuildChannel
+            The created channel to store.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
+        """
+
+    @abstractmethod
+    async def channel_delete(
+        self,
+        channel_id: hikari.Snowflake,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        """
+        Remove a deleted channel.
+
+        Parameters
+        ----------
+        channel_id : hikari.Snowflake
+            The ID of the channel that was deleted.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
+        """
+
+    @abstractmethod
+    async def channel_update(
+        self,
+        channel: hikari.PermissibleGuildChannel,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        """
+        Update an updated channel.
+
+        Parameters
+        ----------
+        channel : hikari.PermissibleGuildChannel
+            The updated channel to update.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
+        """
 
     @abstractmethod
     async def connect(
@@ -140,78 +213,6 @@ class Backend(ABC):
         """
 
     @abstractmethod
-    async def channel_create(
-        self,
-        channel: hikari.PermissibleGuildChannel,
-        confirm: bool,
-    ) -> asyncio.Future[None] | None:
-        """
-        Store a created channel.
-
-        Parameters
-        ----------
-        channel : hikari.PermissibleGuildChannel
-            The created channel to store.
-        confirm : bool
-            If `True`, this method will wait until the database transaction
-            containing this operation has been committed before returning.
-            If `False`, the operation is queued and this method returns immediately.
-
-        Returns
-        -------
-        asyncio.Future[None] | None
-            If `confirm`, the returned future to wait for.
-        """
-
-    @abstractmethod
-    async def channel_delete(
-        self,
-        channel_id: hikari.Snowflake,
-        confirm: bool,
-    ) -> asyncio.Future[None] | None:
-        """
-        Remove a deleted channel.
-
-        Parameters
-        ----------
-        channel_id : hikari.Snowflake
-            The ID of the channel that was deleted.
-        confirm : bool
-            If `True`, this method will wait until the database transaction
-            containing this operation has been committed before returning.
-            If `False`, the operation is queued and this method returns immediately.
-
-        Returns
-        -------
-        asyncio.Future[None] | None
-            If `confirm`, the returned future to wait for.
-        """
-
-    @abstractmethod
-    async def channel_update(
-        self,
-        channel: hikari.PermissibleGuildChannel,
-        confirm: bool,
-    ) -> asyncio.Future[None] | None:
-        """
-        Update an updated channel.
-
-        Parameters
-        ----------
-        channel : hikari.PermissibleGuildChannel
-            The updated channel to update.
-        confirm : bool
-            If `True`, this method will wait until the database transaction
-            containing this operation has been committed before returning.
-            If `False`, the operation is queued and this method returns immediately.
-
-        Returns
-        -------
-        asyncio.Future[None] | None
-            If `confirm`, the returned future to wait for.
-        """
-
-    @abstractmethod
     async def guild_join(
         self,
         guild: hikari.GatewayGuild,
@@ -281,6 +282,89 @@ class Backend(ABC):
         -------
         asyncio.Future[None] | None
             If `confirm`, the returned future to wait for.
+        """
+
+    @abstractmethod
+    async def iter_channels(
+        self,
+    ) -> AsyncIterator[CachedChannel]:
+        """
+        Iterate through all channels.
+
+        Returns
+        -------
+        AsyncIterator[CachedChannel]
+            The async iterator containing all channels.
+        """
+
+    @abstractmethod
+    async def iter_guilds(
+        self,
+    ) -> AsyncIterator[CachedGuild]:
+        """
+        Iterate through all guilds.
+
+        Returns
+        -------
+        AsyncIterator[CachedGuild]
+            The async iterator containing all guilds.
+        """
+
+    @abstractmethod
+    async def iter_members(
+        self,
+        guild_id: hikari.Snowflake,
+    ) -> AsyncIterator[CachedMember]:
+        """
+        Iterate through all guild members.
+
+        Parameters
+        ----------
+        guild_id : hikari.Snowflake
+            The ID of the guild to get all members from.
+
+        Returns
+        -------
+        AsyncIterator[CachedMember]
+            The async iterator containing all guild members.
+        """
+
+    @abstractmethod
+    async def iter_messages(
+        self,
+        channel_id: hikari.Snowflake,
+    ) -> AsyncIterator[CachedMessage]:
+        """
+        Iterate through all channel messages.
+
+        Parameters
+        ----------
+        channel_id : hikari.Snowflake
+            The ID of the channel to get all messages from.
+
+        Returns
+        -------
+        AsyncIterator[CachedMessage]
+            The async iterator containing all the channel messages.
+        """
+
+    @abstractmethod
+    async def iter_roles(
+        self,
+        guild_id: hikari.Snowflake,
+    ) -> AsyncIterator[CachedRole]:
+        """
+        Iterate through all guild roles.
+
+        Parameters
+        ----------
+        guild_id : hikari.Snowflake
+            The ID of the guild to get all roles from.
+
+        Returns
+        -------
+        AsyncIterator[CachedRole]
+            The async iterator containing all guild roles.
         """
 
     @abstractmethod
