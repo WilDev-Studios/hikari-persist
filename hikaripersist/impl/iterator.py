@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import (
+    AsyncGenerator,
     AsyncIterator,
     Callable,
 )
@@ -44,7 +45,7 @@ class CacheIterator(Generic[T]):
         self._limit: int | None = None
         self._batch_size: int | None = None
 
-    def __aiter__(self) -> AsyncIterator[Any]:
+    def __aiter__(self) -> AsyncIterator[T]:
         return self.__iterate()
 
     def __clone(self) -> CacheIterator[T]:
@@ -54,7 +55,7 @@ class CacheIterator(Generic[T]):
         new._batch_size = self._batch_size
         return new
 
-    async def __iterate(self) -> AsyncIterator[Any]:
+    async def __iterate(self) -> AsyncGenerator[T, None]:
         yielded: int = 0
         batch: list[T] = []
 

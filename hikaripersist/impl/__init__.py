@@ -1,3 +1,5 @@
-__all__ = ("CacheIterator",)
+__all__ = (
+    "CacheIterator",
+)
 
 from hikaripersist.impl.iterator import CacheIterator

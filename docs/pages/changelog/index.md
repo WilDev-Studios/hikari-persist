@@ -10,7 +10,8 @@ This page provides a high-level overview of changes in each release. For full de
 ### 0.1.0a3 (Staging)
 
 - `CacheIterator` for lazy, async iteration of cached objects.
-- New `Cache` methods: `get_channels`, `get_guilds`, `get_members`, `get_messages`, `get_roles`.
+- `Cache` accessor properties: `channels`, `guilds`, `members`, `messages`, and `roles`.
+- Miscellaneous changes to backend logic flow.
 
 ### 0.1.0a2 (March 4th, 2026)
 

@@ -5,12 +5,13 @@ from collections.abc import (
     Callable,
 )
 from hikaripersist.backend import Backend
-from hikaripersist.cached.channel import CachedChannel
-from hikaripersist.cached.guild import CachedGuild
-from hikaripersist.cached.member import CachedMember
-from hikaripersist.cached.message import CachedMessage
-from hikaripersist.cached.role import CachedRole
-from hikaripersist.impl.iterator import CacheIterator
+from hikaripersist.impl.query import (
+    ChannelQuery,
+    GuildQuery,
+    MemberQuery,
+    MessageQuery,
+    RoleQuery,
+)
 from hikaripersist.rule import Rule
 from typing import (
     ClassVar,
@@ -379,254 +380,21 @@ class Cache:
         """The bot interfaced with this cache."""
         return self._bot
 
-    async def get_channel(
-        self,
-        channel_id: hikari.Snowflakeish,
-    ) -> CachedChannel | None:
+    @property
+    def channels(self) -> ChannelQuery:
         """
-        Retrieve a cached channel.
-
-        Parameters
-        ----------
-        channel_id : hikari.Snowflakeish
-            The ID of the channel to retrieve.
-
-        Returns
-        -------
-        CachedChannel | None
-            If found, the cached channel.
-
-        Raises
-        ------
-        TypeError
-            If `channel_id` is not `hikari.Snowflakeish`.
+        Interact with cache channels.
         """
 
-        if not isinstance(channel_id, hikari.Snowflakeish):
-            error: str = "Provided channel_id must be hikari.Snowflakeish"
-            raise TypeError(error)
+        return ChannelQuery(self)
 
-        return await self._backend.get_channel(channel_id)
-
-    async def get_channels(
-        self,
-    ) -> CacheIterator[CachedChannel]:
+    @property
+    def guilds(self) -> GuildQuery:
         """
-        Retrieve all channels.
-
-        Returns
-        -------
-        CacheIterator[CachedChannel]
-            An asynchronous iterator used in the processing of each channel.
+        Interact with cache guilds.
         """
 
-        return await self._backend.iter_channels()
-
-    async def get_guild(
-        self,
-        guild_id: hikari.Snowflakeish,
-    ) -> CachedGuild | None:
-        """
-        Retrieve a cached guild.
-
-        Parameters
-        ----------
-        guild_id : hikari.Snowflakeish
-            The ID of the guild to retrieve.
-
-        Returns
-        -------
-        CachedGuild | None
-            If found, the cached guild.
-
-        Raises
-        ------
-        TypeError
-            If `guild_id` is not `hikari.Snowflakeish`.
-        """
-
-        if not isinstance(guild_id, hikari.Snowflakeish):
-            error: str = "Provided guild_id must be hikari.Snowflakeish"
-            raise TypeError(error)
-
-        return await self._backend.get_guild(guild_id)
-
-    async def get_guilds(
-        self,
-    ) -> CacheIterator[CachedGuild]:
-        """
-        Retrieve all guilds.
-
-        Returns
-        -------
-        CacheIterator[CachedGuild]
-            An asynchronous iterator used in the processing of each guild.
-        """
-
-        return await self._backend.iter_guilds()
-
-    async def get_member(
-        self,
-        user_id: hikari.Snowflakeish,
-        guild_id: hikari.Snowflakeish,
-    ) -> CachedMember | None:
-        """
-        Retrieve a cached member.
-
-        Parameters
-        ----------
-        user_id : hikari.Snowflakeish
-            The ID of the member to retrieve.
-        guild_id : hikari.Snowflakeish
-            The ID of the member's bounded guild.
-
-        Returns
-        -------
-        CachedMember | None
-            If found, the cached member.
-
-        Raises
-        ------
-        TypeError
-            - If `user_id` is not `hikari.Snowflakeish`.
-            - If `guild_id` is not `hikari.Snowflakeish`.
-        """
-
-        if not isinstance(user_id, hikari.Snowflakeish):
-            error: str = "Provided user_id must be hikari.Snowflakeish"
-            raise TypeError(error)
-
-        if not isinstance(guild_id, hikari.Snowflakeish):
-            error: str = "Provided guild_id must be hikari.Snowflakeish"
-            raise TypeError(error)
-
-        return await self._backend.get_member(user_id, guild_id)
-
-    async def get_members(
-        self,
-        guild_id: hikari.Snowflake,
-    ) -> CacheIterator[CachedMember]:
-        """
-        Retrieve all guild members.
-
-        Parameters
-        ----------
-        guild_id : hikari.Snowflake
-            The ID of the guild containing the members.
-
-        Returns
-        -------
-        CacheIterator[CachedMember]
-            An asynchronous iterator used in the processing of each member.
-        """
-
-        return await self._backend.iter_members(guild_id)
-
-    async def get_message(
-        self,
-        message_id: hikari.Snowflakeish,
-        channel_id: hikari.Snowflakeish,
-    ) -> CachedMessage | None:
-        """
-        Retrieve a cached message.
-
-        Parameters
-        ----------
-        message_id : hikari.Snowflakeish
-            The ID of the message to retrieve.
-        channel_id : hikari.Snowflakeish
-            The ID of the channel the message is in.
-
-        Returns
-        -------
-        CachedMessage | None
-            If found, the cached message.
-
-        Raises
-        ------
-        TypeError
-            - If `message_id` is not `hikari.Snowflakeish`.
-            - If `channel_id` is not `hikari.Snowflakeish`.
-        """
-
-        if not isinstance(message_id, hikari.Snowflakeish):
-            error: str = "Provided message_id must be hikari.Snowflakeish"
-            raise TypeError(error)
-
-        if not isinstance(channel_id, hikari.Snowflakeish):
-            error: str = "Provided channel_id must be hikari.Snowflakeish"
-            raise TypeError(error)
-
-        return await self._backend.get_message(message_id, channel_id)
-
-    async def get_messages(
-        self,
-        channel_id: hikari.Snowflake,
-    ) -> CacheIterator[CachedMessage]:
-        """
-        Retrieve all channel messages.
-
-        Parameters
-        ----------
-        channel_id : hikari.Snowflake
-            The ID of the channel containing the messages.
-
-        Returns
-        -------
-        CacheIterator[CachedMessage]
-            An asynchronous iterator used in the processing of each message.
-        """
-
-        return await self._backend.iter_messages(channel_id)
-
-    async def get_role(
-        self,
-        role_id: hikari.Snowflakeish,
-    ) -> CachedRole | None:
-        """
-        Retrieve a cached role.
-
-        Parameters
-        ----------
-        role_id : hikari.Snowflakeish
-            The ID of the role to retrieve.
-
-        Returns
-        -------
-        CachedRole | None
-            If found, the cached role.
-
-        Raises
-        ------
-        TypeError
-            If `role_id` is not `hikari.Snowflakeish`.
-        """
-
-        if not isinstance(role_id, hikari.Snowflakeish):
-            error: str = "Provided role_id must be hikari.Snowflakeish"
-            raise TypeError(error)
-
-        return await self._backend.get_role(role_id)
-
-    async def get_roles(
-        self,
-        guild_id: hikari.Snowflake,
-    ) -> CacheIterator[CachedRole]:
-        """
-        Retrieve all guild roles.
-
-        Parameters
-        ----------
-        guild_id : hikari.Snowflake
-            The ID of the guild containing the roles.
-
-        Returns
-        -------
-        CacheIterator[CachedRole]
-            An asynchronous iterator used in the processing of each role.
-        """
-
-        return await self._backend.iter_roles(guild_id)
+        return GuildQuery(self)
 
     def listen(
         self,
@@ -686,6 +454,30 @@ class Cache:
             return func
 
         return wrapper
+
+    @property
+    def members(self) -> MemberQuery:
+        """
+        Interact with cache members.
+        """
+
+        return MemberQuery(self)
+
+    @property
+    def messages(self) -> MessageQuery:
+        """
+        Interact with cache messages.
+        """
+
+        return MessageQuery(self)
+
+    @property
+    def roles(self) -> RoleQuery:
+        """
+        Interact with cache roles.
+        """
+
+        return RoleQuery(self)
 
     def subscribe(
         self,

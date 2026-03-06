@@ -10,6 +10,13 @@ if TYPE_CHECKING:
     from hikaripersist.cached.member import CachedMember
     from hikaripersist.cached.message import CachedMessage
     from hikaripersist.cached.role import CachedRole
+    from hikaripersist.impl.query import (
+        ChannelQuery,
+        GuildQuery,
+        MemberQuery,
+        MessageQuery,
+        RoleQuery,
+    )
 
     import asyncio
     import hikari
@@ -112,107 +119,6 @@ class Backend(ABC):
         """
 
     @abstractmethod
-    async def get_channel(
-        self,
-        channel_id: hikari.Snowflake,
-    ) -> CachedChannel | None:
-        """
-        Retrieve a stored channel.
-
-        Parameters
-        ----------
-        channel_id : hikari.Snowflake
-            The ID of the channel to retrieve.
-
-        Returns
-        -------
-        CachedChannel | None
-            If found, the stored channel.
-        """
-
-    @abstractmethod
-    async def get_guild(
-        self,
-        guild_id: hikari.Snowflake,
-    ) -> CachedGuild | None:
-        """
-        Retrieve a stored guild.
-
-        Parameters
-        ----------
-        guild_id : hikari.Snowflake
-            The ID of the guild to retrieve.
-
-        Returns
-        -------
-        CachedGuild | None
-            If found, the stored guild.
-        """
-
-    @abstractmethod
-    async def get_member(
-        self,
-        user_id: hikari.Snowflake,
-        guild_id: hikari.Snowflake,
-    ) -> CachedMember | None:
-        """
-        Retrieve a stored member.
-
-        Parameters
-        ----------
-        user_id : hikari.Snowflake
-            The ID of the user to retrieve.
-        guild_id : hikari.Snowflake
-            The ID of the bounded guild.
-
-        Returns
-        -------
-        CachedMember | None
-            If found, the stored member.
-        """
-
-    @abstractmethod
-    async def get_message(
-        self,
-        message_id: hikari.Snowflake,
-        channel_id: hikari.Snowflake,
-    ) -> CachedMessage | None:
-        """
-        Retrieve a stored message.
-
-        Parameters
-        ----------
-        message_id : hikari.Snowflake
-            The ID of the message to retrieve.
-        channel_id : hikari.Snowflake
-            The ID of the channel the message is in.
-
-        Returns
-        -------
-        CachedMessage | None
-            If found, the stored message.
-        """
-
-    @abstractmethod
-    async def get_role(
-        self,
-        role_id: hikari.Snowflake,
-    ) -> CachedRole | None:
-        """
-        Retrieve a stored role.
-
-        Parameters
-        ----------
-        role_id : hikari.Snowflake
-            The ID of the role to retrieve.
-
-        Returns
-        -------
-        CachedRole | None
-            If found, the stored role.
-        """
-
-    @abstractmethod
     async def guild_join(
         self,
         guild: hikari.GatewayGuild,
@@ -287,84 +193,96 @@ class Backend(ABC):
     @abstractmethod
     async def iter_channels(
         self,
+        query: ChannelQuery,
     ) -> AsyncIterator[CachedChannel]:
         """
-        Iterate through all channels.
+        Iterate through all channels in a query.
+
+        Parameters
+        ----------
+        query : ChannelQuery
+            The channel query used in cache lookup.
 
         Returns
         -------
         AsyncIterator[CachedChannel]
-            The async iterator containing all channels.
+            The async iterator containing the queried channels.
         """
 
     @abstractmethod
     async def iter_guilds(
         self,
+        query: GuildQuery,
     ) -> AsyncIterator[CachedGuild]:
         """
-        Iterate through all guilds.
+        Iterate through all guilds in a query.
+
+        Parameters
+        ----------
+        query : GuildQuery
+            The guild query used in cache lookup.
 
         Returns
         -------
         AsyncIterator[CachedGuild]
-            The async iterator containing all guilds.
+            The async iterator containing the queried guilds.
         """
 
     @abstractmethod
     async def iter_members(
         self,
-        guild_id: hikari.Snowflake,
+        query: MemberQuery,
     ) -> AsyncIterator[CachedMember]:
         """
-        Iterate through all guild members.
+        Iterate through all members in a query.
 
         Parameters
         ----------
-        guild_id : hikari.Snowflake
-            The ID of the guild to get all members from.
+        query : GuildQuery
+            The member query used in cache lookup.
 
         Returns
         -------
         AsyncIterator[CachedMember]
-            The async iterator containing all guild members.
+            The async iterator containing the queried members.
         """
 
     @abstractmethod
     async def iter_messages(
         self,
-        channel_id: hikari.Snowflake,
+        query: MessageQuery,
     ) -> AsyncIterator[CachedMessage]:
         """
-        Iterate through all channel messages.
+        Iterate through all channels in a query.
 
         Parameters
         ----------
-        channel_id : hikari.Snowflake
-            The ID of the channel to get all messages from.
+        query : MessageQuery
+            The message query used in cache lookup.
 
         Returns
         -------
         AsyncIterator[CachedMessage]
-            The async iterator containing all the channel messages.
+            The async iterator containing the queried messages.
         """
 
     @abstractmethod
     async def iter_roles(
         self,
-        guild_id: hikari.Snowflake,
+        query: RoleQuery,
     ) -> AsyncIterator[CachedRole]:
         """
-        Iterate through all guild roles.
+        Iterate through all roles in a query.
 
         Parameters
         ----------
-        guild_id : hikari.Snowflake
-            The ID of the guild to get all roles from.
+        query : RoleQuery
+            The role query used in cache lookup.
 
         Returns
         -------
         AsyncIterator[CachedRole]
-            The async iterator containing all guild roles.
+            The async iterator containing the queried roles.
         """
 
     @abstractmethod

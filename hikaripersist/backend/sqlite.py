@@ -14,7 +14,7 @@ from hikaripersist.cached.guild import CachedGuild
 from hikaripersist.cached.member import CachedMember
 from hikaripersist.cached.message import CachedMessage
 from hikaripersist.cached.role import CachedRole
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import asyncio
 import hikari
@@ -25,6 +25,15 @@ try:
     INSTALLED: bool = True
 except ImportError:
     INSTALLED: bool = False
+
+if TYPE_CHECKING:
+    from hikaripersist.impl.query import (
+        ChannelQuery,
+        GuildQuery,
+        MemberQuery,
+        MessageQuery,
+        RoleQuery,
+    )
 
 __all__ = ("SQLiteBackend",)
 
@@ -168,17 +177,18 @@ class SQLiteBackend(Backend):
                 premium     INTEGER NOT NULL
             );
         """)
+        await self._connection.executescript("""
+            CREATE INDEX IF NOT EXISTS idx_channels_guild ON channels(guild);
+            CREATE INDEX IF NOT EXISTS idx_members_guild ON members(guild);
+            CREATE INDEX IF NOT EXISTS idx_roles_guild ON roles(guild);
+
+            CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel);
+            CREATE INDEX IF NOT EXISTS idx_messages_guild ON messages(guild);
+            CREATE INDEX IF NOT EXISTS idx_messages_author ON messages(author);
+            CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created);
+        """)
         await self._connection.execute(
-            "CREATE INDEX IF NOT EXISTS idx_channels_guild ON channels(guild);"
-        )
-        await self._connection.execute(
-            "CREATE INDEX IF NOT EXISTS idx_members_guild ON members(guild);"
-        )
-        await self._connection.execute(
-            "CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel);"
-        )
-        await self._connection.execute(
-            "CREATE INDEX IF NOT EXISTS idx_roles_guild ON roles(guild);"
+            "CREATE VIRTUAL TABLE message_fts USING fts5(content);"
         )
         await self._connection.commit()
 
@@ -425,103 +435,6 @@ class SQLiteBackend(Backend):
 
         logger.info("Disconnected from SQLite cache database")
 
-    async def get_channel(
-        self,
-        channel_id: hikari.Snowflake,
-    ) -> CachedChannel | None:
-        await self._ready.wait()
-
-        async with self._connection.execute(
-            "SELECT * FROM channels WHERE id = ?;",
-            (channel_id,),
-        ) as cursor:
-            channel_result: aiosqlite.Row | None = await cursor.fetchone()
-
-        if not channel_result:
-            return None
-
-        async with self._connection.execute(
-            "SELECT * FROM permission_overwrites WHERE channel_id = ?;",
-            (channel_id,),
-        ) as cursor:
-            permissions_result: Iterable[aiosqlite.Row] = await cursor.fetchall()
-
-        overwrites: dict[hikari.Snowflake, CachedPermissionOverwrite] = {}
-        for row in permissions_result:
-            overwrites[row[1]] = CachedPermissionOverwrite.from_sqlite(row)
-
-        return CachedChannel.from_sqlite(channel_result, overwrites)
-
-    async def get_guild(
-        self,
-        guild_id: hikari.Snowflake,
-    ) -> CachedGuild | None:
-        await self._ready.wait()
-
-        async with self._connection.execute(
-            "SELECT * FROM guilds WHERE id = ?;",
-            (guild_id,),
-        ) as cursor:
-            result: aiosqlite.Row | None = await cursor.fetchone()
-
-        if not result:
-            return None
-
-        return CachedGuild.from_sqlite(result)
-
-    async def get_member(
-        self,
-        user_id: hikari.Snowflake,
-        guild_id: hikari.Snowflake,
-    ) -> CachedMember | None:
-        await self._ready.wait()
-
-        async with self._connection.execute(
-            "SELECT * FROM members WHERE id = ? AND guild = ?;",
-            (user_id, guild_id,),
-        ) as cursor:
-            result: aiosqlite.Row | None = await cursor.fetchone()
-
-        if not result:
-            return None
-
-        return CachedMember.from_sqlite(result)
-
-    async def get_message(
-        self,
-        message_id: hikari.Snowflake,
-        channel_id: hikari.Snowflake,
-    ) -> CachedMessage | None:
-        await self._ready.wait()
-
-        async with self._connection.execute(
-            "SELECT * FROM messages WHERE id = ? AND channel = ?;",
-            (message_id, channel_id,),
-        ) as cursor:
-            result: aiosqlite.Row | None = await cursor.fetchone()
-
-        if not result:
-            return None
-
-        return CachedMessage.from_sqlite(result)
-
-    async def get_role(
-        self,
-        role_id: hikari.Snowflake,
-    ) -> CachedRole | None:
-        await self._ready.wait()
-
-        async with self._connection.execute(
-            "SELECT * FROM roles WHERE id = ?;",
-            (role_id,),
-        ) as cursor:
-            result: aiosqlite.Row | None = await cursor.fetchone()
-
-        if not result:
-            return None
-
-        return CachedRole.from_sqlite(result)
-
     async def guild_join(
         self,
         guild: hikari.GatewayGuild,
@@ -628,99 +541,411 @@ class SQLiteBackend(Backend):
 
         return None
 
-    async def iter_channels(
+    async def iter_channels( # noqa: PLR0912, PLR0915
         self,
+        query: ChannelQuery,
     ) -> AsyncIterator[CachedChannel]:
         await self._ready.wait()
 
-        async with self._connection.execute(
-            "SELECT * FROM channels;",
-        ) as cursor:
+        sql: str = "SELECT * FROM channels"
+        conditions: list[str] = []
+        params: list[object] = []
+
+        if query._category is not None:
+            conditions.append("category = ?")
+            params.append(query._category)
+
+        if query._channel_id is not None:
+            conditions.append("id = ?")
+            params.append(query._channel_id)
+
+        if query._created_after is not None:
+            conditions.append("created > ?")
+            params.append(query._created_after.timestamp())
+
+        if query._created_before is not None:
+            conditions.append("created < ?")
+            params.append(query._created_before.timestamp())
+
+        if query._guild_id is not None:
+            conditions.append("guild = ?")
+            params.append(query._guild_id)
+
+        if query._name is not None:
+            conditions.append("name = ?")
+            params.append(query._name)
+
+        if query._nsfw is not None:
+            conditions.append("nsfw = ?")
+            params.append(int(query._nsfw))
+
+        if query._position is not None:
+            conditions.append("position = ?")
+            params.append(query._position)
+
+        if query._topic is not None:
+            conditions.append("topic LIKE ?")
+            params.append(f"%{query._topic}%")
+
+        if query._type is not None:
+            conditions.append("type = ?")
+            params.append(int(query._type))
+
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+
+        if query._limit is not None:
+            sql += " LIMIT ?"
+            params.append(query._limit)
+
+        sql += ';'
+
+        batch: int = BATCH_SIZE
+        if query._limit is not None:
+            batch = min(batch, query._limit)
+
+        async with self._connection.execute(sql, tuple(params)) as cursor:
             while True:
-                cresult: Iterable[aiosqlite.Row] = await cursor.fetchmany(BATCH_SIZE)
-                if not cresult:
+                rows: Iterable[aiosqlite.Row] = await cursor.fetchmany(batch)
+                if not rows:
                     break
 
-                for row in cresult:
+                for row in rows:
                     async with self._connection.execute(
                         "SELECT * FROM permission_overwrites WHERE channel_id = ?;",
                         (row[0],),
                     ) as pcursor:
                         presult: Iterable[aiosqlite.Row] = await pcursor.fetchall()
 
-                    yield CachedChannel.from_sqlite(
-                        row,
-                        {row[1]: CachedPermissionOverwrite.from_sqlite(row) for row in presult}
-                    )
+                    overwrites: dict[hikari.Snowflake, hikari.PermissionOverwrite] = {
+                        r[1]: CachedPermissionOverwrite.from_sqlite(r) for r in presult
+                    }
+                    yield CachedChannel.from_sqlite(row, overwrites)
 
-    async def iter_guilds(
+    async def iter_guilds( # noqa: PLR0912, PLR0915
         self,
+        query: GuildQuery,
     ) -> AsyncIterator[CachedGuild]:
         await self._ready.wait()
 
-        async with self._connection.execute(
-            "SELECT * FROM guilds;",
-        ) as cursor:
+        sql: str = "SELECT * FROM guilds"
+        conditions: list[str] = []
+        params: list[object] = []
+
+        if query._created_after is not None:
+            conditions.append("created > ?")
+            params.append(query._created_after.timestamp())
+
+        if query._created_before is not None:
+            conditions.append("created < ?")
+            params.append(query._created_before.timestamp())
+
+        if query._description is not None:
+            conditions.append("description LIKE ?")
+            params.append(f"%{query._description}%")
+
+        if query._guild_id is not None:
+            conditions.append("id = ?")
+            params.append(query._guild_id)
+
+        if query._name is not None:
+            conditions.append("name = ?")
+            params.append(query._name)
+
+        if query._nsfw is not None:
+            conditions.append("nsfw = ?")
+            params.append(int(query._nsfw))
+
+        if query._mfa is not None:
+            conditions.append("mfa = ?")
+            params.append(int(query._mfa))
+
+        if query._owner_id is not None:
+            conditions.append("owner = ?")
+            params.append(query._owner_id)
+
+        if query._premium is not None:
+            conditions.append("premium = ?")
+            params.append(int(query._premium))
+
+        if query._vanity is not None:
+            conditions.append("vanity = ?")
+            params.append(query._vanity)
+
+        if query._verification is not None:
+            conditions.append("verification = ?")
+            params.append(int(query._verification))
+
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+
+        if query._limit is not None:
+            sql += " LIMIT ?"
+            params.append(query._limit)
+
+        sql += ';'
+
+        batch: int = BATCH_SIZE
+        if query._limit is not None:
+            batch = min(batch, query._limit)
+
+        async with self._connection.execute(sql, tuple(params)) as cursor:
             while True:
-                result: Iterable[aiosqlite.Row] = await cursor.fetchmany(BATCH_SIZE)
-                if not result:
+                rows: Iterable[aiosqlite.Row] = await cursor.fetchmany(batch)
+                if not rows:
                     break
 
-                for row in result:
+                for row in rows:
                     yield CachedGuild.from_sqlite(row)
 
-    async def iter_members(
+    async def iter_members( # noqa: PLR0912, PLR0915
         self,
-        guild_id: hikari.Snowflake,
+        query: MemberQuery,
     ) -> AsyncIterator[CachedMember]:
         await self._ready.wait()
 
-        async with self._connection.execute(
-            "SELECT * FROM members WHERE guild = ?;",
-            (guild_id,),
-        ) as cursor:
+        sql: str = "SELECT * FROM members"
+        conditions: list[str] = []
+        params: list[object] = []
+
+        if query._boosting_after is not None:
+            conditions.append("premium_since > ?")
+            params.append(query._boosting_after.timestamp())
+
+        if query._boosting_before is not None:
+            conditions.append("premium_since < ?")
+            params.append(query._boosting_before.timestamp())
+
+        if query._bot is not None:
+            conditions.append("bot = ?")
+            params.append(int(query._bot))
+
+        if query._discriminator is not None:
+            conditions.append("discriminator = ?")
+            params.append(query._discriminator)
+
+        if query._created_after is not None:
+            conditions.append("created > ?")
+            params.append(query._created_after.timestamp())
+
+        if query._created_before is not None:
+            conditions.append("created < ?")
+            params.append(query._created_before.timestamp())
+
+        if query._flags is not None:
+            conditions.append("flags = ?")
+            params.append(int(query._flags))
+
+        if query._guild_id is not None:
+            conditions.append("guild = ?")
+            params.append(query._guild_id)
+
+        if query._joined_after is not None:
+            conditions.append("joined > ?")
+            params.append(query._joined_after.timestamp())
+
+        if query._joined_before is not None:
+            conditions.append("joined < ?")
+            params.append(query._joined_before.timestamp())
+
+        if query._member_id is not None:
+            conditions.append("id = ?")
+            params.append(query._member_id)
+
+        if query._name is not None:
+            conditions.append("name = ?")
+            params.append(query._name)
+
+        if query._system is not None:
+            conditions.append("system = ?")
+            params.append(int(query._system))
+
+        if query._timed_out is not None:
+            if query._timed_out:
+                conditions.append("timeout IS NOT NULL")
+            else:
+                conditions.append("timeout IS NULL")
+
+        if query._username is not None:
+            conditions.append("username = ?")
+            params.append(query._username)
+
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+
+        if query._limit is not None:
+            sql += " LIMIT ?"
+            params.append(query._limit)
+
+        sql += ';'
+
+        batch: int = BATCH_SIZE
+        if query._limit is not None:
+            batch = min(batch, query._limit)
+
+        async with self._connection.execute(sql, tuple(params)) as cursor:
             while True:
-                result: Iterable[aiosqlite.Row] = await cursor.fetchmany(BATCH_SIZE)
-                if not result:
+                rows: Iterable[aiosqlite.Row] = await cursor.fetchmany(batch)
+                if not rows:
                     break
 
-                for row in result:
+                for row in rows:
                     yield CachedMember.from_sqlite(row)
 
-    async def iter_messages(
+    async def iter_messages( # noqa: PLR0912, PLR0915
         self,
-        channel_id: hikari.Snowflake,
+        query: MessageQuery,
     ) -> AsyncIterator[CachedMessage]:
         await self._ready.wait()
 
-        async with self._connection.execute(
-            "SELECT * FROM messages WHERE channel = ?;",
-            (channel_id,),
-        ) as cursor:
+        sql: str = ''
+        conditions: list[str] = []
+        params: list[object] = []
+
+        if query._contains is not None:
+            sql = (
+                "SELECT messages.* FROM messages "
+                "JOIN message_fts ON messages.id = message_fts.rowid"
+            )
+            conditions.append("message_fts MATCH ?")
+            params.append(query._contains)
+        else:
+            sql = "SELECT * FROM messages"
+
+        if query._author_id is not None:
+            conditions.append("author = ?")
+            params.append(query._author_id)
+
+        if query._channel_id is not None:
+            conditions.append("channel = ?")
+            params.append(query._channel_id)
+
+        if query._created_after is not None:
+            conditions.append("created > ?")
+            params.append(query._created_after.timestamp())
+
+        if query._created_before is not None:
+            conditions.append("created < ?")
+            params.append(query._created_before.timestamp())
+
+        if query._edited_after is not None:
+            conditions.append("edited > ?")
+            params.append(query._edited_after.timestamp())
+
+        if query._edited_before is not None:
+            conditions.append("edited < ?")
+            params.append(query._edited_before.timestamp())
+
+        if query._guild_id is not None:
+            conditions.append("guild = ?")
+            params.append(query._guild_id)
+
+        if query._message_id is not None:
+            conditions.append("id = ?")
+            params.append(query._message_id)
+
+        if query._pinned is not None:
+            conditions.append("pinned = ?")
+            params.append(int(query._pinned))
+
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+
+        if query._limit is not None:
+            sql += " LIMIT ?"
+            params.append(query._limit)
+
+        sql += ';'
+
+        batch: int = BATCH_SIZE
+        if query._limit is not None:
+            batch = min(batch, query._limit)
+
+        async with self._connection.execute(sql, tuple(params)) as cursor:
             while True:
-                result: Iterable[aiosqlite.Row] = await cursor.fetchmany(BATCH_SIZE)
-                if not result:
+                rows: Iterable[aiosqlite.Row] = await cursor.fetchmany(batch)
+                if not rows:
                     break
 
-                for row in result:
+                for row in rows:
                     yield CachedMessage.from_sqlite(row)
 
-    async def iter_roles(
+    async def iter_roles( # noqa: PLR0912, PLR0915
         self,
-        guild_id: hikari.Snowflake,
+        query: RoleQuery,
     ) -> AsyncIterator[CachedRole]:
         await self._ready.wait()
 
-        async with self._connection.execute(
-            "SELECT * FROM roles WHERE guild = ?;",
-            (guild_id,),
-        ) as cursor:
+        sql: str = "SELECT * FROM roles"
+        conditions: list[str] = []
+        params: list[object] = []
+
+        if query._color is not None:
+            conditions.append("color = ?")
+            params.append(int(query._color))
+
+        if query._created_after is not None:
+            conditions.append("created > ?")
+            params.append(query._created_after.timestamp())
+
+        if query._created_before is not None:
+            conditions.append("created < ?")
+            params.append(query._created_before.timestamp())
+
+        if query._guild_id is not None:
+            conditions.append("guild = ?")
+            params.append(query._guild_id)
+
+        if query._hoisted is not None:
+            conditions.append("hoisted = ?")
+            params.append(int(query._hoisted))
+
+        if query._managed is not None:
+            if query._managed:
+                conditions.append("bot IS NOT NULL")
+            else:
+                conditions.append("bot IS NULL")
+
+        if query._name is not None:
+            conditions.append("name = ?")
+            params.append(query._name)
+
+        if query._permissions is not None:
+            conditions.append("permissions = ?")
+            params.append(int(query._permissions))
+
+        if query._position is not None:
+            conditions.append("position = ?")
+            params.append(query._position)
+
+        if query._premium is not None:
+            conditions.append("premium = ?")
+            params.append(int(query._premium))
+
+        if query._role_id is not None:
+            conditions.append("id = ?")
+            params.append(query._role_id)
+
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+
+        if query._limit is not None:
+            sql += " LIMIT ?"
+            params.append(query._limit)
+
+        sql += ';'
+
+        batch: int = BATCH_SIZE
+        if query._limit is not None:
+            batch = min(batch, query._limit)
+
+        async with self._connection.execute(sql, tuple(params)) as cursor:
             while True:
-                result: Iterable[aiosqlite.Row] = await cursor.fetchmany(BATCH_SIZE)
-                if not result:
+                rows: Iterable[aiosqlite.Row] = await cursor.fetchmany(batch)
+                if not rows:
                     break
 
-                for row in result:
+                for row in rows:
                     yield CachedRole.from_sqlite(row)
 
     async def member_create(
@@ -852,7 +1077,7 @@ class SQLiteBackend(Backend):
                     created,
                     pinned,
                     content,
-                    edited,
+                    edited
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?);
             """,
