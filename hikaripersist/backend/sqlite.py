@@ -1097,6 +1097,12 @@ class SQLiteBackend(Backend):
             confirm,
         )
 
+        await self.__execute(
+            "INSERT INTO message_fts(rowid, content) VALUES (?, ?);",
+            (message.id, message.content,),
+            False,
+        )
+
         if confirm:
             return future
 
@@ -1112,6 +1118,12 @@ class SQLiteBackend(Backend):
             "DELETE FROM messages WHERE id = ? AND channel = ?;",
             (message_id, channel_id,),
             confirm,
+        )
+
+        await self.__execute(
+            "DELETE FROM message_fts WHERE rowid = ?;",
+            (message_id,),
+            False,
         )
 
         if confirm:
@@ -1151,6 +1163,12 @@ class SQLiteBackend(Backend):
             f"UPDATE messages SET {', '.join(fields)} WHERE id = ? AND channel = ?;",
             tuple(values),
             confirm,
+        )
+
+        await self.__execute(
+            "INSERT OR REPLACE INTO message_fts(rowid, content) VALUES (?, ?);",
+            (message.id, message.content,),
+            False,
         )
 
         if confirm:
