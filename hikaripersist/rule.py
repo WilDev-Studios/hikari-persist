@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import TypeVar
 
 import hikari
 
@@ -13,25 +14,9 @@ __all__ = (
     "Rule",
 )
 
-def verify_type(obj: object, type_: type | tuple[type, ...], name: str) -> object:
-    """
-    Verify that a provided object is an instance of a type.
+_T = TypeVar("_T")
 
-    Parameters
-    ----------
-    obj : object
-        The object to type check.
-    type_ : type | tuple[type, ...]
-        The type to check against.
-    name : str
-        The name of the parameter if errored.
-
-    Returns
-    -------
-    object
-        If passed, the object itself.
-    """
-
+def verify_type(obj: object, type_: type[_T] | tuple[type[_T], ...], name: str) -> _T:
     if not isinstance(obj, type_):
         error: str = f"Provided {name} must be {type_}"
         raise TypeError(error)
@@ -39,27 +24,6 @@ def verify_type(obj: object, type_: type | tuple[type, ...], name: str) -> objec
     return obj
 
 def to_snowflake_set(ids: Iterable[hikari.Snowflakeish] | None, name: str) -> set[hikari.Snowflake]:
-    """
-    Convert an iterable of `hikari.Snowflakeish` to a set of `hikari.Snowflake`.
-
-    Parameters
-    ----------
-    ids : Iterable[hikari.Snowflakeish] | None
-        If provided, any IDs to convert.
-    name : str
-        If type erroring, the name of the IDs iterable.
-
-    Returns
-    -------
-    set[hikari.Snowflake]
-        The converted set of IDs.
-
-    Raises
-    ------
-    TypeError
-        If `ids` is not an `Iterable` of `hikari.Snowflakeish`.
-    """
-
     if ids is None:
         return set()
 
@@ -77,23 +41,23 @@ class ChannelRule:
     def __init__(
         self,
         *,
-        channel_blacklist: Iterable[hikari.Snowflakeish] | None = None,
-        channel_whitelist: Iterable[hikari.Snowflakeish] | None = None,
-        guild_blacklist: Iterable[hikari.Snowflakeish] | None = None,
-        guild_whitelist: Iterable[hikari.Snowflakeish] | None = None,
+        channel_denylist: Iterable[hikari.Snowflakeish] | None = None,
+        channel_allowlist: Iterable[hikari.Snowflakeish] | None = None,
+        guild_denylist: Iterable[hikari.Snowflakeish] | None = None,
+        guild_allowlist: Iterable[hikari.Snowflakeish] | None = None,
     ) -> None:
         """
         Create a cache channel rule.
 
         Parameters
         ----------
-        channel_blacklist : Iterable[hikari.Snowflakeish] | None
+        channel_denylist : Iterable[hikari.Snowflakeish] | None
             If provided, an iterable of channels to ignore.
-        channel_whitelist : Iterable[hikari.Snowflakeish] | None
+        channel_allowlist : Iterable[hikari.Snowflakeish] | None
             If provided, ignore all channels except these.
-        guild_blacklist : Iterable[hikari.Snowflakeish] | None
+        guild_denylist : Iterable[hikari.Snowflakeish] | None
             If provided, an iterable of guilds to ignore.
-        guild_whitelist : Iterable[hikari.Snowflakeish] | None
+        guild_allowlist : Iterable[hikari.Snowflakeish] | None
             If provided, ignore all guilds except these.
 
         Raises
@@ -102,21 +66,21 @@ class ChannelRule:
             If any parameter is provided and is not `Iterable` of `hikari.Snowflakeish`.
         """
 
-        self._channel_blacklist: set[hikari.Snowflake] = to_snowflake_set(
-            channel_blacklist,
-            "channel_blacklist",
+        self._channel_denylist: set[hikari.Snowflake] = to_snowflake_set(
+            channel_denylist,
+            "channel_denylist",
         )
-        self._channel_whitelist: set[hikari.Snowflake] = to_snowflake_set(
-            channel_whitelist,
-            "channel_whitelist",
+        self._channel_allowlist: set[hikari.Snowflake] = to_snowflake_set(
+            channel_allowlist,
+            "channel_allowlist",
         )
-        self._guild_blacklist: set[hikari.Snowflake] = to_snowflake_set(
-            guild_blacklist,
-            "guild_blacklist",
+        self._guild_denylist: set[hikari.Snowflake] = to_snowflake_set(
+            guild_denylist,
+            "guild_denylist",
         )
-        self._guild_whitelist: set[hikari.Snowflake] = to_snowflake_set(
-            guild_whitelist,
-            "guild_whitelist",
+        self._guild_allowlist: set[hikari.Snowflake] = to_snowflake_set(
+            guild_allowlist,
+            "guild_allowlist",
         )
 
     def can_cache(
@@ -128,16 +92,19 @@ class ChannelRule:
         Return whether a channel passes the rule.
         """
 
-        if channel_id in self._channel_blacklist:
+        if channel_id in self._channel_denylist:
             return False
 
-        if self._channel_whitelist and channel_id not in self._channel_whitelist:
+        if self._channel_allowlist and channel_id not in self._channel_allowlist:
             return False
 
-        if guild_id in self._guild_blacklist:
+        if guild_id in self._guild_denylist:
             return False
 
-        return not (self._guild_whitelist and guild_id not in self._guild_whitelist)
+        if self._guild_allowlist and guild_id not in self._guild_allowlist: # noqa: SIM103
+            return False
+
+        return True
 
 class GuildRule:
     """Guild cache rule."""
@@ -145,17 +112,17 @@ class GuildRule:
     def __init__(
         self,
         *,
-        guild_blacklist: Iterable[hikari.Snowflakeish] | None = None,
-        guild_whitelist: Iterable[hikari.Snowflakeish] | None = None,
+        guild_denylist: Iterable[hikari.Snowflakeish] | None = None,
+        guild_allowlist: Iterable[hikari.Snowflakeish] | None = None,
     ) -> None:
         """
         Create a cache guild rule.
 
         Parameters
         ----------
-        guild_blacklist : Iterable[hikari.Snowflakeish] | None
+        guild_denylist : Iterable[hikari.Snowflakeish] | None
             If provided, an iterable of all guilds to ignore.
-        guild_whitelist : Iterable[hikari.Snowflakeish] | None
+        guild_allowlist : Iterable[hikari.Snowflakeish] | None
             If provided, ignore all guilds except these.
 
         Raises
@@ -164,13 +131,13 @@ class GuildRule:
             If any parameter is provided and is not `Iterable` of `hikari.Snowflakeish`.
         """
 
-        self._guild_blacklist: set[hikari.Snowflake] = to_snowflake_set(
-            guild_blacklist,
-            "guild_blacklist",
+        self._guild_denylist: set[hikari.Snowflake] = to_snowflake_set(
+            guild_denylist,
+            "guild_denylist",
         )
-        self._guild_whitelist: set[hikari.Snowflake] = to_snowflake_set(
-            guild_whitelist,
-            "guild_whitelist",
+        self._guild_allowlist: set[hikari.Snowflake] = to_snowflake_set(
+            guild_allowlist,
+            "guild_allowlist",
         )
 
     def can_cache(
@@ -181,10 +148,13 @@ class GuildRule:
         Return whether a guild passes the rule.
         """
 
-        if guild_id in self._guild_blacklist:
+        if guild_id in self._guild_denylist:
             return False
 
-        return not (self._guild_whitelist and guild_id not in self._guild_whitelist)
+        if self._guild_allowlist and guild_id not in self._guild_allowlist: # noqa: SIM103
+            return False
+
+        return True
 
 class MemberRule:
     """Member cache rule."""
@@ -192,23 +162,23 @@ class MemberRule:
     def __init__(
         self,
         *,
-        guild_blacklist: Iterable[hikari.Snowflakeish] | None = None,
-        guild_whitelist: Iterable[hikari.Snowflakeish] | None = None,
-        user_blacklist: Iterable[hikari.Snowflakeish] | None = None,
-        user_whitelist: Iterable[hikari.Snowflakeish] | None = None,
+        guild_denylist: Iterable[hikari.Snowflakeish] | None = None,
+        guild_allowlist: Iterable[hikari.Snowflakeish] | None = None,
+        user_denylist: Iterable[hikari.Snowflakeish] | None = None,
+        user_allowlist: Iterable[hikari.Snowflakeish] | None = None,
     ) -> None:
         """
         Create a cache member rule.
 
         Parameters
         ----------
-        guild_blacklist : Iterable[hikari.Snowflakeish] | None
+        guild_denylist : Iterable[hikari.Snowflakeish] | None
             If provided, an iterable of all guilds to ignore.
-        guild_whitelist : Iterable[hikari.Snowflakeish] | None
+        guild_allowlist : Iterable[hikari.Snowflakeish] | None
             If provided, ignore all guilds except these.
-        user_blacklist : Iterable[hikari.Snowflakeish] | None
+        user_denylist : Iterable[hikari.Snowflakeish] | None
             If provided, an iterable of all users to ignore.
-        user_whitelist : Iterable[hikari.Snowflakeish] | None
+        user_allowlist : Iterable[hikari.Snowflakeish] | None
             If provided, ignore all users except these.
 
         Raises
@@ -217,21 +187,21 @@ class MemberRule:
             If any parameter is provided and is not `Iterable` of `hikari.Snowflakeish`.
         """
 
-        self._guild_blacklist: set[hikari.Snowflake] = to_snowflake_set(
-            guild_blacklist,
-            "guild_blacklist",
+        self._guild_denylist: set[hikari.Snowflake] = to_snowflake_set(
+            guild_denylist,
+            "guild_denylist",
         )
-        self._guild_whitelist: set[hikari.Snowflake] = to_snowflake_set(
-            guild_whitelist,
-            "guild_whitelist",
+        self._guild_allowlist: set[hikari.Snowflake] = to_snowflake_set(
+            guild_allowlist,
+            "guild_allowlist",
         )
-        self._user_blacklist: set[hikari.Snowflake] = to_snowflake_set(
-            user_blacklist,
-            "user_blacklist",
+        self._user_denylist: set[hikari.Snowflake] = to_snowflake_set(
+            user_denylist,
+            "user_denylist",
         )
-        self._user_whitelist: set[hikari.Snowflake] = to_snowflake_set(
-            user_whitelist,
-            "user_whitelist",
+        self._user_allowlist: set[hikari.Snowflake] = to_snowflake_set(
+            user_allowlist,
+            "user_allowlist",
         )
 
     def can_cache(
@@ -243,16 +213,19 @@ class MemberRule:
         Return whether a member passes the rule.
         """
 
-        if guild_id in self._guild_blacklist:
+        if guild_id in self._guild_denylist:
             return False
 
-        if self._guild_whitelist and guild_id not in self._guild_whitelist:
+        if self._guild_allowlist and guild_id not in self._guild_allowlist:
             return False
 
-        if user_id in self._user_blacklist:
+        if user_id in self._user_denylist:
             return False
 
-        return not (self._user_whitelist and user_id not in self._user_whitelist)
+        if self._user_allowlist and user_id not in self._user_allowlist: # noqa: SIM103
+            return False
+
+        return True
 
 class MessageRule:
     """Message cache rule."""
@@ -260,35 +233,35 @@ class MessageRule:
     def __init__( # noqa: PLR0913
         self,
         *,
-        channel_blacklist: Iterable[hikari.Snowflakeish] | None = None,
-        channel_whitelist: Iterable[hikari.Snowflakeish] | None = None,
-        guild_blacklist: Iterable[hikari.Snowflakeish] | None = None,
-        guild_whitelist: Iterable[hikari.Snowflakeish] | None = None,
-        message_blacklist: Iterable[hikari.Snowflakeish] | None = None,
-        message_whitelist: Iterable[hikari.Snowflakeish] | None = None,
-        user_blacklist: Iterable[hikari.Snowflakeish] | None = None,
-        user_whitelist: Iterable[hikari.Snowflakeish] | None = None,
+        channel_denylist: Iterable[hikari.Snowflakeish] | None = None,
+        channel_allowlist: Iterable[hikari.Snowflakeish] | None = None,
+        guild_denylist: Iterable[hikari.Snowflakeish] | None = None,
+        guild_allowlist: Iterable[hikari.Snowflakeish] | None = None,
+        message_denylist: Iterable[hikari.Snowflakeish] | None = None,
+        message_allowlist: Iterable[hikari.Snowflakeish] | None = None,
+        user_denylist: Iterable[hikari.Snowflakeish] | None = None,
+        user_allowlist: Iterable[hikari.Snowflakeish] | None = None,
     ) -> None:
         """
         Create a cache message rule.
 
         Parameters
         ----------
-        channel_blacklist : Iterable[hikari.Snowflakeish] | None
+        channel_denylist : Iterable[hikari.Snowflakeish] | None
             If provided, an iterable of channels to ignore.
-        channel_whitelist : Iterable[hikari.Snowflakeish] | None
+        channel_allowlist : Iterable[hikari.Snowflakeish] | None
             If provided, ignore all channels except these.
-        guild_blacklist : Iterable[hikari.Snowflakeish] | None
+        guild_denylist : Iterable[hikari.Snowflakeish] | None
             If provided, an iterable of guilds to ignore.
-        guild_whitelist : Iterable[hikari.Snowflakeish] | None
+        guild_allowlist : Iterable[hikari.Snowflakeish] | None
             If provided, ignore all guilds except these.
-        message_blacklist : Iterable[hikari.Snowflakeish] | None
+        message_denylist : Iterable[hikari.Snowflakeish] | None
             If provided, an iterable of messages to ignore.
-        message_whitelist : Iterable[hikari.Snowflakeish] | None
+        message_allowlist : Iterable[hikari.Snowflakeish] | None
             If provided, ignore all messages except these.
-        user_blacklist : Iterable[hikari.Snowflakeish] | None
+        user_denylist : Iterable[hikari.Snowflakeish] | None
             If provided, an iterable of users to ignore.
-        user_whitelist : Iterable[hikari.Snowflakeish] | None
+        user_allowlist : Iterable[hikari.Snowflakeish] | None
             If provided, ignore all users except these.
 
         Raises
@@ -297,37 +270,37 @@ class MessageRule:
             If any parameter is provided and is not `Iterable` of `hikari.Snowflakeish`.
         """
 
-        self._channel_blacklist: set[hikari.Snowflake] = to_snowflake_set(
-            channel_blacklist,
-            "channel_blacklist",
+        self._channel_denylist: set[hikari.Snowflake] = to_snowflake_set(
+            channel_denylist,
+            "channel_denylist",
         )
-        self._channel_whitelist: set[hikari.Snowflake] = to_snowflake_set(
-            channel_whitelist,
-            "channel_whitelist",
+        self._channel_allowlist: set[hikari.Snowflake] = to_snowflake_set(
+            channel_allowlist,
+            "channel_allowlist",
         )
-        self._guild_blacklist: set[hikari.Snowflake] = to_snowflake_set(
-            guild_blacklist,
-            "guild_blacklist",
+        self._guild_denylist: set[hikari.Snowflake] = to_snowflake_set(
+            guild_denylist,
+            "guild_denylist",
         )
-        self._guild_whitelist: set[hikari.Snowflake] = to_snowflake_set(
-            guild_whitelist,
-            "guild_whitelist",
+        self._guild_allowlist: set[hikari.Snowflake] = to_snowflake_set(
+            guild_allowlist,
+            "guild_allowlist",
         )
-        self._message_blacklist: set[hikari.Snowflake] = to_snowflake_set(
-            message_blacklist,
-            "message_blacklist",
+        self._message_denylist: set[hikari.Snowflake] = to_snowflake_set(
+            message_denylist,
+            "message_denylist",
         )
-        self._message_whitelist: set[hikari.Snowflake] = to_snowflake_set(
-            message_whitelist,
-            "message_whitelist",
+        self._message_allowlist: set[hikari.Snowflake] = to_snowflake_set(
+            message_allowlist,
+            "message_allowlist",
         )
-        self._user_blacklist: set[hikari.Snowflake] = to_snowflake_set(
-            user_blacklist,
-            "user_blacklist",
+        self._user_denylist: set[hikari.Snowflake] = to_snowflake_set(
+            user_denylist,
+            "user_denylist",
         )
-        self._user_whitelist: set[hikari.Snowflake] = to_snowflake_set(
-            user_whitelist,
-            "user_whitelist",
+        self._user_allowlist: set[hikari.Snowflake] = to_snowflake_set(
+            user_allowlist,
+            "user_allowlist",
         )
 
     def can_cache( # noqa: PLR0911
@@ -341,28 +314,31 @@ class MessageRule:
         Return whether a message passes the rule.
         """
 
-        if channel_id in self._channel_blacklist:
+        if channel_id in self._channel_denylist:
             return False
 
-        if self._channel_whitelist and channel_id not in self._channel_whitelist:
+        if self._channel_allowlist and channel_id not in self._channel_allowlist:
             return False
 
-        if guild_id in self._guild_blacklist:
+        if guild_id in self._guild_denylist:
             return False
 
-        if self._guild_whitelist and guild_id not in self._guild_whitelist:
+        if self._guild_allowlist and guild_id not in self._guild_allowlist:
             return False
 
-        if message_id in self._message_blacklist:
+        if message_id in self._message_denylist:
             return False
 
-        if self._message_whitelist and message_id not in self._message_whitelist:
+        if self._message_allowlist and message_id not in self._message_allowlist:
             return False
 
-        if user_id in self._user_blacklist:
+        if user_id in self._user_denylist:
             return False
 
-        return not (self._user_whitelist and user_id not in self._user_whitelist)
+        if self._user_allowlist and user_id not in self._user_allowlist: # noqa: SIM103
+            return False
+
+        return True
 
 class RoleRule:
     """Role cache rule."""
@@ -370,41 +346,41 @@ class RoleRule:
     def __init__(
         self,
         *,
-        guild_blacklist: Iterable[hikari.Snowflakeish] | None = None,
-        guild_whitelist: Iterable[hikari.Snowflakeish] | None = None,
-        role_blacklist: Iterable[hikari.Snowflakeish] | None = None,
-        role_whitelist: Iterable[hikari.Snowflakeish] | None = None,
+        guild_denylist: Iterable[hikari.Snowflakeish] | None = None,
+        guild_allowlist: Iterable[hikari.Snowflakeish] | None = None,
+        role_denylist: Iterable[hikari.Snowflakeish] | None = None,
+        role_allowlist: Iterable[hikari.Snowflakeish] | None = None,
     ) -> None:
         """
         Create a cache role rule.
 
         Parameters
         ----------
-        guild_blacklist : Iterable[hikari.Snowflakeish] | None
+        guild_denylist : Iterable[hikari.Snowflakeish] | None
             If provided, an iterable of all guilds to ignore.
-        guild_whitelist : Iterable[hikari.Snowflakeish] | None
+        guild_allowlist : Iterable[hikari.Snowflakeish] | None
             If provided, ignore all guilds except these.
-        role_blacklist : Iterable[hikari.Snowflakeish] | None
+        role_denylist : Iterable[hikari.Snowflakeish] | None
             If provided, an iterable of all roles to ignore.
-        role_whitelist : Iterable[hikari.Snowflakeish] | None
+        role_allowlist : Iterable[hikari.Snowflakeish] | None
             If provided, ignore all roles except these.
         """
 
-        self._guild_blacklist: set[hikari.Snowflake] = to_snowflake_set(
-            guild_blacklist,
-            "guild_blacklist",
+        self._guild_denylist: set[hikari.Snowflake] = to_snowflake_set(
+            guild_denylist,
+            "guild_denylist",
         )
-        self._guild_whitelist: set[hikari.Snowflake] = to_snowflake_set(
-            guild_whitelist,
-            "guild_whitelist",
+        self._guild_allowlist: set[hikari.Snowflake] = to_snowflake_set(
+            guild_allowlist,
+            "guild_allowlist",
         )
-        self._role_blacklist: set[hikari.Snowflake] = to_snowflake_set(
-            role_blacklist,
-            "role_blacklist",
+        self._role_denylist: set[hikari.Snowflake] = to_snowflake_set(
+            role_denylist,
+            "role_denylist",
         )
-        self._role_whitelist: set[hikari.Snowflake] = to_snowflake_set(
-            role_whitelist,
-            "role_whitelist",
+        self._role_allowlist: set[hikari.Snowflake] = to_snowflake_set(
+            role_allowlist,
+            "role_allowlist",
         )
 
     def can_cache(
@@ -416,19 +392,22 @@ class RoleRule:
         Return whether a role passes the rule.
         """
 
-        if guild_id in self._guild_blacklist:
+        if guild_id in self._guild_denylist:
             return False
 
-        if self._guild_whitelist and guild_id not in self._guild_whitelist:
+        if self._guild_allowlist and guild_id not in self._guild_allowlist:
             return False
 
-        if role_id in self._role_blacklist:
+        if role_id in self._role_denylist:
             return False
 
-        return not (self._role_whitelist and role_id not in self._role_whitelist)
+        if self._role_allowlist and role_id not in self._role_allowlist: # noqa: SIM103
+            return False
+
+        return True
 
 class Rule:
-    "Cache ruleset."
+    """Cache ruleset."""
 
     def __init__(
         self,
