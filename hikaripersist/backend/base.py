@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import (
+    AsyncIterator,
+    Iterable,
+)
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -496,6 +499,102 @@ class Backend(ABC):
         ----------
         role : hikari.Role
             The updated role to update.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
+        """
+
+    @abstractmethod
+    async def startup_guild(
+        self,
+        guild: hikari.GatewayGuild,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        """
+        Cache a guild on startup.
+
+        Parameters
+        ----------
+        guild : hikari.GatewayGuild
+            The guild to cache.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
+        """
+
+    @abstractmethod
+    async def startup_guild_channels(
+        self,
+        channels: Iterable[hikari.PermissibleGuildChannel],
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        """
+        Cache channels on startup.
+
+        Parameters
+        ----------
+        channels : Iterable[hikari.PermissibleGuildChannel]
+            The channels to cache.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
+        """
+
+    @abstractmethod
+    async def startup_guild_members(
+        self,
+        members: Iterable[hikari.Member],
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        """
+        Cache members on startup.
+
+        Parameters
+        ----------
+        members : Iterable[hikari.Member]
+            The members to cache.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
+        """
+
+    @abstractmethod
+    async def startup_guild_roles(
+        self,
+        roles: Iterable[hikari.Role],
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        """
+        Cache roles on startup.
+
+        Parameters
+        ----------
+        roles : Iterable[hikari.Role]
+            The roles to cache.
         confirm : bool
             If `True`, this method will wait until the database transaction
             containing this operation has been committed before returning.

@@ -12,6 +12,7 @@ This page provides a high-level overview of changes in each release. For full de
 - `CacheIterator` for lazy, async iteration of cached objects.
 - `Cache` accessor properties: `channels`, `guilds`, `members`, `messages`, and `roles`.
 - Miscellaneous changes to backend logic flow.
+- Startup caching logic.
 
 ### 0.1.0a2 (March 4th, 2026)
 

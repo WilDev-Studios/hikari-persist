@@ -94,6 +94,7 @@ class Cache:
             hikari.GuildChannelCreateEvent: self.__channel_create,
             hikari.GuildChannelDeleteEvent: self.__channel_delete,
             hikari.GuildChannelUpdateEvent: self.__channel_update,
+            hikari.GuildAvailableEvent: self.__guild_available,
             hikari.GuildJoinEvent:   self.__guild_join,
             hikari.GuildLeaveEvent:  self.__guild_leave,
             hikari.GuildUpdateEvent: self.__guild_update,
@@ -192,6 +193,96 @@ class Cache:
 
         logger.debug(f"Cached CHANNEL_UPDATE: ChannelID={event.channel_id}")
         return await self._backend.channel_update(event.channel, confirm)
+
+    async def __guild_available( # noqa: PLR0912
+        self,
+        event: hikari.GuildAvailableEvent,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        futures: list[asyncio.Future[None]] = []
+
+        channels: set[hikari.PermissibleGuildChannel] = set()
+        for channel in event.channels.values():
+            if self._rule._channel.can_cache(
+                channel.id, channel.guild_id
+            ):
+                channels.add(channel)
+            else:
+                logger.debug(
+                    f"Ignoring GUILD_AVAILABLE:Channel - ruleset violation: ChannelID={channel.id}"
+                )
+
+        if channels:
+            logger.debug(
+                f"Cached GUILD_AVAILABLE:Channel: GuildID={event.guild_id}, Channels={len(channels)}" # noqa: E501
+            )
+            future: asyncio.Future[None] | None = await self._backend.startup_guild_channels(
+                channels,
+                confirm,
+            )
+            if future:
+                futures.append(future)
+
+        if self._rule._guild.can_cache(
+            event.guild_id,
+        ):
+            logger.debug(f"Cached GUILD_AVAILABLE:Guild: GuildID={event.guild_id}")
+            future: asyncio.Future[None] | None = await self._backend.startup_guild(
+                event.guild,
+                confirm,
+            )
+            if future:
+                futures.append(future)
+        else:
+            logger.debug(
+                f"Ignoring GUILD_AVAILABLE:Guild - ruleset violation: GuildID={event.guild_id}"
+            )
+
+        members: set[hikari.Member] = set()
+        for member in event.members.values():
+            if self._rule._member.can_cache(
+                member.guild_id, member.id,
+            ):
+                members.add(member)
+            else:
+                logger.debug(
+                    f"Ignoring GUILD_AVAILABLE:Member - ruleset violation: MemberID={member.id}"
+                )
+
+        if members:
+            logger.debug(
+                f"Cached GUILD_AVAILABLE:Member: GuildID={event.guild_id}, Members={len(members)}"
+            )
+            future: asyncio.Future[None] | None = await self._backend.startup_guild_members(
+                members,
+                confirm,
+            )
+            if future:
+                futures.append(future)
+
+        roles: set[hikari.Role] = set()
+        for role in event.roles.values():
+            if self._rule._role.can_cache(
+                role.guild_id, role.id,
+            ):
+                roles.add(role)
+            else:
+                logger.debug(
+                    f"Ignoring GUILD_AVAILABLE:Role - ruleset violation: RoleID={role.id}"
+                )
+
+        if roles:
+            logger.debug(
+                f"Cached GUILD_AVAILABLE:Role: GuildID={event.guild_id}, Roles={len(roles)}"
+            )
+            future: asyncio.Future[None] | None = await self._backend.startup_guild_roles(
+                roles,
+                confirm,
+            )
+            if future:
+                futures.append(future)
+
+        return await asyncio.gather(*futures, return_exceptions=True)
 
     async def __guild_join(
         self,

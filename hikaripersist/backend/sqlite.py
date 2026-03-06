@@ -39,7 +39,10 @@ __all__ = ("SQLiteBackend",)
 
 logger: logging.Logger = logging.getLogger("persist.sqlite")
 
-BATCH_SIZE: int = 500
+BATCH_SIZE_NORMAL: int = 100
+BATCH_SIZE_STARTUP: int = 1000
+
+MAX_VARIABLES: int = 999
 
 class SQLiteBackend(Backend):
     """Use `SQLite` as the persistent cache backend."""
@@ -242,7 +245,7 @@ class SQLiteBackend(Backend):
                     try:
                         batch.append(self._queue.get_nowait())
 
-                        if len(batch) >= BATCH_SIZE:
+                        if len(batch) >= BATCH_SIZE_NORMAL:
                             break
                     except asyncio.QueueEmpty:
                         break
@@ -600,7 +603,7 @@ class SQLiteBackend(Backend):
 
         sql += ';'
 
-        batch: int = BATCH_SIZE
+        batch: int = BATCH_SIZE_NORMAL
         if query._limit is not None:
             batch = min(batch, query._limit)
 
@@ -685,7 +688,7 @@ class SQLiteBackend(Backend):
 
         sql += ';'
 
-        batch: int = BATCH_SIZE
+        batch: int = BATCH_SIZE_NORMAL
         if query._limit is not None:
             batch = min(batch, query._limit)
 
@@ -779,7 +782,7 @@ class SQLiteBackend(Backend):
 
         sql += ';'
 
-        batch: int = BATCH_SIZE
+        batch: int = BATCH_SIZE_NORMAL
         if query._limit is not None:
             batch = min(batch, query._limit)
 
@@ -857,7 +860,7 @@ class SQLiteBackend(Backend):
 
         sql += ';'
 
-        batch: int = BATCH_SIZE
+        batch: int = BATCH_SIZE_NORMAL
         if query._limit is not None:
             batch = min(batch, query._limit)
 
@@ -935,7 +938,7 @@ class SQLiteBackend(Backend):
 
         sql += ';'
 
-        batch: int = BATCH_SIZE
+        batch: int = BATCH_SIZE_NORMAL
         if query._limit is not None:
             batch = min(batch, query._limit)
 
@@ -1248,3 +1251,239 @@ class SQLiteBackend(Backend):
             return future
 
         return None
+
+    async def startup_guild(
+        self,
+        guild: hikari.GatewayGuild,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        future: asyncio.Future[None] | None = await self.__execute(
+            """
+                INSERT OR REPLACE INTO guilds
+                (
+                    id,
+                    name,
+                    description,
+                    owner,
+                    created,
+                    icon,
+                    banner,
+                    nsfw,
+                    mfa,
+                    verification,
+                    features,
+                    vanity,
+                    premium
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            (
+                guild.id,
+                guild.name,
+                guild.description,
+                guild.owner_id,
+                guild.created_at.timestamp(),
+                guild.icon_hash,
+                guild.banner_hash,
+                int(guild.nsfw_level),
+                int(guild.mfa_level),
+                int(guild.verification_level),
+                ','.join(str(feature) for feature in guild.features) if guild.features else None,
+                guild.vanity_url_code,
+                int(guild.premium_tier),
+            ),
+            confirm,
+        )
+
+        if confirm:
+            return future
+
+        return None
+
+    async def startup_guild_channels(
+        self,
+        channels: Iterable[hikari.PermissibleGuildChannel],
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        channel_rows: list[tuple] = []
+        overwrite_rows: list[tuple] = []
+
+        for channel in channels:
+            channel_rows.append((
+                channel.id,
+                channel.guild_id,
+                channel.parent_id,
+                int(channel.type),
+                channel.created_at.timestamp(),
+                channel.name,
+                int(channel.is_nsfw),
+                channel.position,
+                getattr(channel, "topic", None),
+            ))
+
+            for overwrite in channel.permission_overwrites.values():
+                overwrite_rows.append((
+                    channel.id,
+                    overwrite.id,
+                    int(overwrite.type),
+                    int(overwrite.allow),
+                    int(overwrite.deny),
+                ))
+
+        if not channel_rows:
+            return None
+
+        future: asyncio.Future[None] | None = (
+            asyncio.get_running_loop().create_future() if confirm else None
+        )
+
+        async with self._connection.execute("BEGIN"):
+            await self._connection.executemany(
+                """
+                    INSERT OR REPLACE INTO channels
+                    (id, guild, category, type, created, name, nsfw, position, topic)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+                """,
+                channel_rows,
+            )
+
+            if overwrite_rows:
+                await self._connection.executemany(
+                    """
+                        INSERT OR REPLACE INTO permission_overwrites
+                        (channel_id, target_id, type, allow, deny)
+                        VALUES (?, ?, ?, ?, ?);
+                    """,
+                    overwrite_rows,
+                )
+
+            await self._connection.commit()
+
+        if future:
+            future.set_result(None)
+
+        return future
+
+    async def startup_guild_members(
+        self,
+        members: Iterable[hikari.Member],
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        rows: list[tuple] = []
+
+        for member in members:
+            comm_disabled = member.communication_disabled_until()
+
+            rows.append((
+                member.id,
+                member.guild_id,
+                member.username,
+                member.discriminator,
+                member.created_at.timestamp(),
+                member.joined_at.timestamp(),
+                str(member.display_avatar_url),
+                str(member.display_banner_url) if member.display_banner_url else None,
+                member.display_name,
+                int(member.flags),
+                int(member.is_bot),
+                int(member.is_system),
+                ','.join(str(role) for role in member.role_ids) if member.role_ids else None,
+                member.premium_since.timestamp() if member.premium_since else None,
+                comm_disabled.timestamp() if comm_disabled else None,
+            ))
+
+        if not rows:
+            return None
+
+        future: asyncio.Future[None] | None = (
+            asyncio.get_running_loop().create_future() if confirm else None
+        )
+
+        async with self._connection.execute("BEGIN"):
+            await self._connection.executemany(
+                """
+                    INSERT OR REPLACE INTO members
+                    (
+                        id,
+                        guild,
+                        username,
+                        discriminator,
+                        created,
+                        joined,
+                        avatar,
+                        banner,
+                        name,
+                        flags,
+                        bot,
+                        system,
+                        roles,
+                        premium_since,
+                        timeout
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                """,
+                rows,
+            )
+            await self._connection.commit()
+
+        if future:
+            future.set_result(None)
+
+        return future
+
+    async def startup_guild_roles(
+        self,
+        roles: Iterable[hikari.Role],
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        rows: list[tuple] = []
+
+        for role in roles:
+            rows.append((
+                role.id,
+                role.guild_id,
+                role.name,
+                int(role.color),
+                role.icon_hash,
+                int(role.permissions),
+                role.created_at.timestamp(),
+                role.position,
+                int(role.is_hoisted),
+                int(role.bot_id) if role.bot_id is not None else None,
+                int(role.is_premium_subscriber_role),
+            ))
+
+        if not rows:
+            return None
+
+        future: asyncio.Future[None] | None = (
+            asyncio.get_running_loop().create_future() if confirm else None
+        )
+
+        async with self._connection.execute("BEGIN"):
+            await self._connection.executemany(
+                """
+                    INSERT OR REPLACE INTO roles
+                    (
+                        id,
+                        guild,
+                        name,
+                        color,
+                        icon,
+                        permissions,
+                        created,
+                        position,
+                        hoisted,
+                        bot,
+                        premium
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                """,
+                rows,
+            )
+            await self._connection.commit()
+
+        if future:
+            future.set_result(None)
+
+        return future
