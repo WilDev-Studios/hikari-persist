@@ -39,6 +39,7 @@ class Cache:
         bot: hikari.GatewayBot,
         backend: Backend,
         *,
+        cache_messages: bool = False,
         rule: Rule | None = None,
     ) -> None:
         """
@@ -50,6 +51,8 @@ class Cache:
             The bot to interface this cache with.
         backend : Backend
             The database backend to use with this cache.
+        cache_messages : bool
+            If the cache should store messages.
         rule : Rule | None
             If provided, a ruleset regarding what is cached.
 
@@ -60,6 +63,7 @@ class Cache:
         TypeError
             - If `bot` is not `hikari.GatewayBot`.
             - If `backend` is not `Backend`.
+            - `cache_messages` is not `bool`.
             - If `rule` is provided and is not `Rule`.
         """
 
@@ -75,6 +79,10 @@ class Cache:
             error: str = "Provided backend must be Backend"
             raise TypeError(error)
 
+        if not isinstance(cache_messages, bool):
+            error: str = "Provided cache_messages must be bool"
+            raise TypeError(error)
+
         if rule is not None and not isinstance(rule, Rule):
             error: str = "Provided rule must be Rule"
             raise TypeError(error)
@@ -84,6 +92,7 @@ class Cache:
         self._bot: hikari.GatewayBot = bot
         self._backend: Backend = backend
         self._rule: Rule = rule or Rule()
+        self._rule._message._messages = cache_messages
 
         self._listeners: dict[
             type[hikari.Event], list[tuple[Callable[[hikari.Event], Awaitable[None]], bool]]

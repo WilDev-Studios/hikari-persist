@@ -1,10 +1,3 @@
-"""
-Tests for ChannelRule, GuildRule, MemberRule, MessageRule, RoleRule, and Rule.
-
-Requires: pytest
-Run with: pytest tests/test_rules.py -v
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -284,76 +277,119 @@ class TestMemberRule:
 # MessageRule
 # ---------------------------------------------------------------------------
 
+def enabled_message_rule(**kwargs) -> MessageRule:
+    """Helper to build a MessageRule with caching enabled."""
+    rule = MessageRule(**kwargs)
+    rule._messages = True
+    return rule
+
+
 class TestMessageRule:
 
-    def test_default_allows_everything(self) -> None:
+    # --- _messages flag ---
+
+    def test_default_blocks_all(self) -> None:
+        # Message caching is opt-in — disabled by default
         rule = MessageRule()
+        assert rule.can_cache(CHANNEL_A, GUILD_A, MESSAGE_A, USER_A) is False
+
+    def test_messages_disabled_ignores_all_filters(self) -> None:
+        # Even with permissive filters, disabled means always False
+        rule = MessageRule(
+            channel_allowlist=[CHANNEL_A],
+            guild_allowlist=[GUILD_A],
+            message_allowlist=[MESSAGE_A],
+            user_allowlist=[USER_A],
+        )
+        assert rule.can_cache(CHANNEL_A, GUILD_A, MESSAGE_A, USER_A) is False
+
+    def test_messages_enabled_allows_by_default(self) -> None:
+        rule = enabled_message_rule()
         assert rule.can_cache(CHANNEL_A, GUILD_A, MESSAGE_A, USER_A) is True
 
+    # --- channel_denylist ---
+
     def test_channel_denylist(self) -> None:
-        rule = MessageRule(channel_denylist=[CHANNEL_A])
+        rule = enabled_message_rule(channel_denylist=[CHANNEL_A])
         assert rule.can_cache(CHANNEL_A, GUILD_A, MESSAGE_A, USER_A) is False
         assert rule.can_cache(CHANNEL_B, GUILD_A, MESSAGE_A, USER_A) is True
 
+    # --- channel_allowlist ---
+
     def test_channel_allowlist(self) -> None:
-        rule = MessageRule(channel_allowlist=[CHANNEL_A])
+        rule = enabled_message_rule(channel_allowlist=[CHANNEL_A])
         assert rule.can_cache(CHANNEL_A, GUILD_A, MESSAGE_A, USER_A) is True
         assert rule.can_cache(CHANNEL_B, GUILD_A, MESSAGE_A, USER_A) is False
 
+    # --- guild_denylist ---
+
     def test_guild_denylist(self) -> None:
-        rule = MessageRule(guild_denylist=[GUILD_A])
+        rule = enabled_message_rule(guild_denylist=[GUILD_A])
         assert rule.can_cache(CHANNEL_A, GUILD_A, MESSAGE_A, USER_A) is False
         assert rule.can_cache(CHANNEL_A, GUILD_B, MESSAGE_A, USER_A) is True
 
+    # --- guild_allowlist ---
+
     def test_guild_allowlist(self) -> None:
-        rule = MessageRule(guild_allowlist=[GUILD_A])
+        rule = enabled_message_rule(guild_allowlist=[GUILD_A])
         assert rule.can_cache(CHANNEL_A, GUILD_A, MESSAGE_A, USER_A) is True
         assert rule.can_cache(CHANNEL_A, GUILD_B, MESSAGE_A, USER_A) is False
 
+    # --- message_denylist ---
+
     def test_message_denylist(self) -> None:
-        rule = MessageRule(message_denylist=[MESSAGE_A])
+        rule = enabled_message_rule(message_denylist=[MESSAGE_A])
         assert rule.can_cache(CHANNEL_A, GUILD_A, MESSAGE_A, USER_A) is False
         assert rule.can_cache(CHANNEL_A, GUILD_A, MESSAGE_B, USER_A) is True
 
+    # --- message_allowlist ---
+
     def test_message_allowlist(self) -> None:
-        rule = MessageRule(message_allowlist=[MESSAGE_A])
+        rule = enabled_message_rule(message_allowlist=[MESSAGE_A])
         assert rule.can_cache(CHANNEL_A, GUILD_A, MESSAGE_A, USER_A) is True
         assert rule.can_cache(CHANNEL_A, GUILD_A, MESSAGE_B, USER_A) is False
 
+    # --- user_denylist ---
+
     def test_user_denylist(self) -> None:
-        rule = MessageRule(user_denylist=[USER_A])
+        rule = enabled_message_rule(user_denylist=[USER_A])
         assert rule.can_cache(CHANNEL_A, GUILD_A, MESSAGE_A, USER_A) is False
         assert rule.can_cache(CHANNEL_A, GUILD_A, MESSAGE_A, USER_B) is True
 
+    # --- user_allowlist ---
+
     def test_user_allowlist(self) -> None:
-        rule = MessageRule(user_allowlist=[USER_A])
+        rule = enabled_message_rule(user_allowlist=[USER_A])
         assert rule.can_cache(CHANNEL_A, GUILD_A, MESSAGE_A, USER_A) is True
         assert rule.can_cache(CHANNEL_A, GUILD_A, MESSAGE_A, USER_B) is False
 
+    # --- denylist takes priority ---
+
     def test_denylist_takes_priority_channel(self) -> None:
-        rule = MessageRule(
+        rule = enabled_message_rule(
             channel_denylist=[CHANNEL_A],
             channel_allowlist=[CHANNEL_A],
         )
         assert rule.can_cache(CHANNEL_A, GUILD_A, MESSAGE_A, USER_A) is False
 
     def test_denylist_takes_priority_message(self) -> None:
-        rule = MessageRule(
+        rule = enabled_message_rule(
             message_denylist=[MESSAGE_A],
             message_allowlist=[MESSAGE_A],
         )
         assert rule.can_cache(CHANNEL_A, GUILD_A, MESSAGE_A, USER_A) is False
 
     def test_denylist_takes_priority_user(self) -> None:
-        rule = MessageRule(
+        rule = enabled_message_rule(
             user_denylist=[USER_A],
             user_allowlist=[USER_A],
         )
         assert rule.can_cache(CHANNEL_A, GUILD_A, MESSAGE_A, USER_A) is False
 
+    # --- combined ---
+
     def test_first_failing_check_short_circuits(self) -> None:
-        # channel is denied — even though everything else is allowed, should fail fast
-        rule = MessageRule(
+        rule = enabled_message_rule(
             channel_denylist=[CHANNEL_A],
             guild_allowlist=[GUILD_A],
             message_allowlist=[MESSAGE_A],
@@ -362,7 +398,7 @@ class TestMessageRule:
         assert rule.can_cache(CHANNEL_A, GUILD_A, MESSAGE_A, USER_A) is False
 
     def test_all_checks_pass(self) -> None:
-        rule = MessageRule(
+        rule = enabled_message_rule(
             channel_allowlist=[CHANNEL_A],
             guild_allowlist=[GUILD_A],
             message_allowlist=[MESSAGE_A],

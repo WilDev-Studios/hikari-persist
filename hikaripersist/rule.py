@@ -303,6 +303,8 @@ class MessageRule:
             "user_allowlist",
         )
 
+        self._messages: bool = False
+
     def can_cache( # noqa: PLR0911
         self,
         channel_id: hikari.Snowflake,
@@ -313,6 +315,9 @@ class MessageRule:
         """
         Return whether a message passes the rule.
         """
+
+        if not self._messages:
+            return False
 
         if channel_id in self._channel_denylist:
             return False

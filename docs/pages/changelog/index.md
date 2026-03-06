@@ -14,6 +14,7 @@ This page provides a high-level overview of changes in each release. For full de
 - Miscellaneous changes to backend logic flow.
 - Startup caching logic.
 - `Rule` changes: testing suite; `whitelist`/`blacklist` parameters renamed to `allowlist`/`denylist`.
+- New `cache_messages` parameter in `Cache` constructor.
 
 ### 0.1.0a2 (March 4th, 2026)
 
