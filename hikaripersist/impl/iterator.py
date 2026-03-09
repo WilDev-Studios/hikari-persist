@@ -10,7 +10,6 @@ from typing import (
     Any,
     cast,
     Generic,
-    Literal,
     TypeVar,
 )
 
@@ -18,6 +17,37 @@ __all__ = ("CacheIterator",)
 
 T = TypeVar('T')
 U = TypeVar('U')
+
+class _Step(Generic[T, U]):
+    __slots__ = ()
+
+class _Filter(_Step[T, T]):
+    __slots__ = ("fn",)
+
+    def __init__(self, fn: Callable[[T], bool]) -> None:
+        self.fn = fn
+
+    def __call__(self, item: T) -> tuple[T, bool, bool]:
+        return item, not self.fn(item), False
+
+class _Map(_Step[T, U]):
+    __slots__ = ("fn",)
+
+    def __init__(self, fn: Callable[[T], U]) -> None:
+        self.fn = fn
+
+    def __call__(self, item: T) -> tuple[U, bool, bool]:
+        return self.fn(item), False, False
+
+class _TakeWhile(_Step[T, T]):
+    __slots__ = ("fn",)
+
+    def __init__(self, fn: Callable[[T], bool]) -> None:
+        self.fn = fn
+
+    def __call__(self, item: T) -> tuple[T, bool, bool]:
+        stop: bool = not self.fn(item)
+        return item, stop, stop
 
 class CacheIterator(Generic[T]):
     """Asynchronous iterator for cached objects."""
@@ -44,9 +74,7 @@ class CacheIterator(Generic[T]):
         """
 
         self._source: AsyncIterator[T] = source
-
-        self._pipeline: list[tuple[Literal["filter", "map"], Callable[[Any], Any]]] = []
-
+        self._pipeline: list[_Step[Any, Any]] = []
         self._limit: int | None = None
 
     def __aiter__(self) -> AsyncIterator[T]:
@@ -54,12 +82,6 @@ class CacheIterator(Generic[T]):
 
     def __await__(self) -> Generator[Any, None, list[T]]:
         return self.collect().__await__()
-
-    def __clone(self) -> CacheIterator[T]:
-        new: CacheIterator[T] = CacheIterator(self._source)
-        new._pipeline = self._pipeline.copy()
-        new._limit = self._limit
-        return new
 
     async def __iterate(self) -> AsyncGenerator[T, None]:
         yielded: int = 0
@@ -71,13 +93,14 @@ class CacheIterator(Generic[T]):
             value: Any = item
             skip: bool = False
 
-            for kind, func in self._pipeline:
-                if kind == "filter":
-                    if not func(value):
-                        skip = True
-                        break
-                else:
-                    value = func(value)
+            for step in self._pipeline:
+                value, skip, stop = step(value)
+
+                if stop:
+                    return
+
+                if skip:
+                    break
 
             if skip:
                 continue
@@ -208,14 +231,14 @@ class CacheIterator(Generic[T]):
             A chain-callable async iterator over the enumerated results.
         """
 
-        async def _enumerate_source() -> AsyncGenerator[tuple[int, T], None]:
-            index: int = start
+        counter: list[int] = [start]
 
-            async for item in self:
-                yield index, item
-                index += 1
+        def _enumerate(item: T) -> tuple[int, T]:
+            index: int = counter[0]
+            counter[0] += 1
+            return index, item
 
-        return CacheIterator(_enumerate_source())
+        return self.map(_enumerate)
 
     def filter(self, predicate: Callable[[T], bool]) -> CacheIterator[T]:
         """
@@ -234,9 +257,8 @@ class CacheIterator(Generic[T]):
             A chain-callable async iterator over the results.
         """
 
-        new: CacheIterator[T] = self.__clone()
-        new._pipeline.append(("filter", predicate))
-        return new
+        self._pipeline.append(_Filter(predicate))
+        return self
 
     def flat_map(self, func: Callable[[T], AsyncIterator[U]]) -> CacheIterator[U]:
         """
@@ -307,9 +329,8 @@ class CacheIterator(Generic[T]):
             A chain-callable async iterator over the results.
         """
 
-        new: CacheIterator[T] = self.__clone()
-        new._limit = size
-        return new
+        self._limit = size
+        return self
 
     def map(self, func: Callable[[T], U]) -> CacheIterator[U]:
         """
@@ -326,9 +347,8 @@ class CacheIterator(Generic[T]):
             A chain-callable async iterator over the results.
         """
 
-        new: CacheIterator[T] = self.__clone()
-        new._pipeline.append(("map", func))
-        return cast(CacheIterator[U], new)
+        self._pipeline.append(_Map(func))
+        return cast(CacheIterator[U], self)
 
     async def max(self, *, key: Callable[[T], Any]) -> T | None:
         """
@@ -476,14 +496,8 @@ class CacheIterator(Generic[T]):
             A chain-callable async iterator over the results.
         """
 
-        async def _take_source() -> AsyncGenerator[T, None]:
-            async for item in self:
-                if not predicate(item):
-                    break
-
-                yield item
-
-        return CacheIterator(_take_source())
+        self._pipeline.append(_TakeWhile(predicate))
+        return self
 
     def unique(self, *, key: Callable[[T], Any] | None = None) -> CacheIterator[T]:
         """

@@ -207,14 +207,12 @@ class TestFilter:
 
     @pytest.mark.asyncio
     async def test_filter_is_immutable(self) -> None:
+        # filter() mutates and returns self — branching is not supported.
+        # This test verifies filter() returns self and accumulates steps correctly.
         base = make(1, 2, 3, 4)
         evens = base.filter(lambda x: x % 2 == 0)
-        odds = base.filter(lambda x: x % 2 != 0)
-        # Both should work independently — but note shared source means
-        # only one can be iterated; this tests that filter() doesn't mutate base
-        assert evens._pipeline != base._pipeline
-        assert odds._pipeline != base._pipeline
-        assert evens._pipeline != odds._pipeline
+        assert evens is base
+        assert len(base._pipeline) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -303,10 +301,12 @@ class TestLimit:
 
     @pytest.mark.asyncio
     async def test_limit_is_immutable(self) -> None:
+        # limit() mutates and returns self — branching is not supported.
+        # This test verifies limit() returns self and sets the limit correctly.
         base = make(1, 2, 3, 4, 5)
         limited = base.limit(2)
-        assert base._limit is None
-        assert limited._limit == 2
+        assert limited is base
+        assert base._limit == 2
 
 
 # ---------------------------------------------------------------------------

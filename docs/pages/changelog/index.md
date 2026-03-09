@@ -7,6 +7,10 @@ This page provides a high-level overview of changes in each release. For full de
 
 ## 0.1.0 (In Progress)
 
+### 0.1.0a4 (STAGING)
+
+- Replace tagged-tuple pipeline with typed step classes, eliminating per-step cloning in `CacheIterator`.
+
 ### 0.1.0a3 (March 8th, 2026)
 
 - `CacheIterator` for lazy, async iteration of cached objects.
