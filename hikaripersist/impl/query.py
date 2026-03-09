@@ -55,6 +55,18 @@ class ChannelQuery(BaseQuery):
         self._topic: str | None = None
         self._type: hikari.ChannelType | None = None
 
+    def all(self) -> CacheIterator[CachedChannel]:
+        """
+        Retrieve all results.
+
+        Returns
+        -------
+        CacheIterator[CachedChannel]
+            An asynchronous iterator providing lazy access to the results.
+        """
+
+        return CacheIterator(self._cache._backend.iter_channels(self))
+
     def where( # noqa: PLR0913
         self,
         *,
@@ -143,6 +155,18 @@ class GuildQuery(BaseQuery):
         self._premium: hikari.GuildPremiumTier | None = None
         self._vanity: str | None = None
         self._verification: hikari.GuildVerificationLevel | None = None
+
+    def all(self) -> CacheIterator[CachedGuild]:
+        """
+        Retrieve all results.
+
+        Returns
+        -------
+        CacheIterator[CachedGuild]
+            An asynchronous iterator providing lazy access to the results.
+        """
+
+        return CacheIterator(self._cache._backend.iter_guilds(self))
 
     def where( # noqa: PLR0913
         self,
@@ -240,6 +264,18 @@ class MemberQuery(BaseQuery):
         self._system: bool | None = None
         self._timed_out: bool | None = None
         self._username: str | None = None
+
+    def all(self) -> CacheIterator[CachedMember]:
+        """
+        Retrieve all results.
+
+        Returns
+        -------
+        CacheIterator[CachedMember]
+            An asynchronous iterator providing lazy access to the results.
+        """
+
+        return CacheIterator(self._cache._backend.iter_members(self))
 
     def where( # noqa: PLR0913
         self,
@@ -361,6 +397,18 @@ class MessageQuery(BaseQuery):
         self._message_id: hikari.Snowflake | None = None
         self._pinned: bool | None = None
 
+    def all(self) -> CacheIterator[CachedMessage]:
+        """
+        Retrieve all results.
+
+        Returns
+        -------
+        CacheIterator[CachedMessage]
+            An asynchronous iterator providing lazy access to the results.
+        """
+
+        return CacheIterator(self._cache._backend.iter_messages(self))
+
     def where( # noqa: PLR0913
         self,
         *,
@@ -455,6 +503,18 @@ class RoleQuery(BaseQuery):
         self._position: int | None = None
         self._premium: bool | None = None
         self._role_id: hikari.Snowflake | None = None
+
+    def all(self) -> CacheIterator[CachedRole]:
+        """
+        Retrieve all results.
+
+        Returns
+        -------
+        CacheIterator[CachedRole]
+            An asynchronous iterator providing lazy access to the results.
+        """
+
+        return CacheIterator(self._cache._backend.iter_roles(self))
 
     def where( # noqa: PLR0913
         self,

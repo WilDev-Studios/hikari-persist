@@ -235,7 +235,7 @@ class SQLiteBackend(Backend):
         await self._connection.execute(f"PRAGMA user_version = {SQLiteBackend.VERSION};")
         await self._connection.commit()
 
-    async def __writer(self) -> None:
+    async def __writer(self) -> None: # noqa: PLR0912
         try:
             while True:
                 query: tuple[str, tuple[Any], asyncio.Future[None] | None] = await self._queue.get()
@@ -250,13 +250,26 @@ class SQLiteBackend(Backend):
                     except asyncio.QueueEmpty:
                         break
 
+                groups: list[tuple[str, list[tuple[Any]], list[asyncio.Future[None]]]] = []
+                for sql, values, future in batch:
+                    if groups and groups[-1][0] == sql:
+                        groups[-1][1].append(values)
+
+                        if future:
+                            groups[-1][2].append(future)
+                    else:
+                        groups.append((sql, [values], [future] if future else []))
+
                 futures: list[asyncio.Future[None]] = []
 
                 await self._connection.execute("BEGIN")
-                for sql, values, future in batch:
-                    await self._connection.execute(sql, values)
-                    if future:
-                        futures.append(future)
+                for sql, rows, group_futures in groups:
+                    if len(rows) == 1:
+                        await self._connection.execute(sql, rows[0])
+                    else:
+                        await self._connection.executemany(sql, rows)
+
+                    futures.extend(group_futures)
                 await self._connection.commit()
 
                 for future in futures:
@@ -266,6 +279,9 @@ class SQLiteBackend(Backend):
                     future.set_result(None)
         except asyncio.CancelledError:
             return
+        except Exception:
+            logger.exception("Writer crashed")
+            raise
 
     async def channel_create(
         self,
@@ -1323,102 +1339,68 @@ class SQLiteBackend(Backend):
         channels: Iterable[hikari.PermissibleGuildChannel],
         confirm: bool,
     ) -> asyncio.Future[None] | None:
-        channel_rows: list[tuple] = []
-        overwrite_rows: list[tuple] = []
+        futures: list[asyncio.Future[None]] | None = []
 
         for channel in channels:
-            channel_rows.append((
-                channel.id,
-                channel.guild_id,
-                channel.parent_id,
-                int(channel.type),
-                channel.created_at.timestamp(),
-                channel.name,
-                int(channel.is_nsfw),
-                channel.position,
-                getattr(channel, "topic", None),
-            ))
-
-            for overwrite in channel.permission_overwrites.values():
-                overwrite_rows.append((
-                    channel.id,
-                    overwrite.id,
-                    int(overwrite.type),
-                    int(overwrite.allow),
-                    int(overwrite.deny),
-                ))
-
-        if not channel_rows:
-            return None
-
-        future: asyncio.Future[None] | None = (
-            asyncio.get_running_loop().create_future() if confirm else None
-        )
-
-        async with self._connection.execute("BEGIN"):
-            await self._connection.executemany(
+            future: asyncio.Future[None] | None = await self.__execute(
                 """
                     INSERT OR REPLACE INTO channels
                     (id, guild, category, type, created, name, nsfw, position, topic)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
-                channel_rows,
+                (
+                    channel.id,
+                    channel.guild_id,
+                    channel.parent_id,
+                    int(channel.type),
+                    channel.created_at.timestamp(),
+                    channel.name,
+                    int(channel.is_nsfw),
+                    channel.position,
+                    getattr(channel, "topic", None),
+                ),
+                confirm,
             )
 
-            if overwrite_rows:
-                await self._connection.executemany(
+            if confirm:
+                futures.append(future)
+
+            for overwrite in channel.permission_overwrites.values():
+                future = await self.__execute(
                     """
                         INSERT OR REPLACE INTO permission_overwrites
                         (channel_id, target_id, type, allow, deny)
                         VALUES (?, ?, ?, ?, ?);
                     """,
-                    overwrite_rows,
+                    (
+                        channel.id,
+                        overwrite.id,
+                        int(overwrite.type),
+                        int(overwrite.allow),
+                        int(overwrite.deny),
+                    ),
+                    confirm,
                 )
 
-            await self._connection.commit()
+                if confirm:
+                    futures.append(future)
 
-        if future:
-            future.set_result(None)
+        if not futures:
+            return None
 
-        return future
+        return asyncio.gather(*futures, return_exceptions=True)
 
     async def startup_guild_members(
         self,
         members: Iterable[hikari.Member],
         confirm: bool,
     ) -> asyncio.Future[None] | None:
-        rows: list[tuple] = []
+        futures: list[asyncio.Future[None]] = []
 
         for member in members:
             comm_disabled = member.communication_disabled_until()
 
-            rows.append((
-                member.id,
-                member.guild_id,
-                member.username,
-                member.discriminator,
-                member.created_at.timestamp(),
-                member.joined_at.timestamp(),
-                str(member.display_avatar_url),
-                str(member.display_banner_url) if member.display_banner_url else None,
-                member.display_name,
-                int(member.flags),
-                int(member.is_bot),
-                int(member.is_system),
-                ','.join(str(role) for role in member.role_ids) if member.role_ids else None,
-                member.premium_since.timestamp() if member.premium_since else None,
-                comm_disabled.timestamp() if comm_disabled else None,
-            ))
-
-        if not rows:
-            return None
-
-        future: asyncio.Future[None] | None = (
-            asyncio.get_running_loop().create_future() if confirm else None
-        )
-
-        async with self._connection.execute("BEGIN"):
-            await self._connection.executemany(
+            future: asyncio.Future[None] | None = await self.__execute(
                 """
                     INSERT OR REPLACE INTO members
                     (
@@ -1440,46 +1422,43 @@ class SQLiteBackend(Backend):
                     )
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
-                rows,
+                (
+                    member.id,
+                    member.guild_id,
+                    member.username,
+                    member.discriminator,
+                    member.created_at.timestamp(),
+                    member.joined_at.timestamp(),
+                    str(member.display_avatar_url),
+                    str(member.display_banner_url) if member.display_banner_url else None,
+                    member.display_name,
+                    int(member.flags),
+                    int(member.is_bot),
+                    int(member.is_system),
+                    ','.join(str(role) for role in member.role_ids) if member.role_ids else None,
+                    member.premium_since.timestamp() if member.premium_since else None,
+                    comm_disabled.timestamp() if comm_disabled else None,
+                ),
+                confirm,
             )
-            await self._connection.commit()
 
-        if future:
-            future.set_result(None)
+            if confirm:
+                futures.append(future)
 
-        return future
+        if not futures:
+            return None
+
+        return asyncio.gather(*futures, return_exceptions=True)
 
     async def startup_guild_roles(
         self,
         roles: Iterable[hikari.Role],
         confirm: bool,
     ) -> asyncio.Future[None] | None:
-        rows: list[tuple] = []
+        futures: list[asyncio.Future[None]] = []
 
         for role in roles:
-            rows.append((
-                role.id,
-                role.guild_id,
-                role.name,
-                int(role.color),
-                role.icon_hash,
-                int(role.permissions),
-                role.created_at.timestamp(),
-                role.position,
-                int(role.is_hoisted),
-                int(role.bot_id) if role.bot_id is not None else None,
-                int(role.is_premium_subscriber_role),
-            ))
-
-        if not rows:
-            return None
-
-        future: asyncio.Future[None] | None = (
-            asyncio.get_running_loop().create_future() if confirm else None
-        )
-
-        async with self._connection.execute("BEGIN"):
-            await self._connection.executemany(
+            future: asyncio.Future[None] | None = await self.__execute(
                 """
                     INSERT OR REPLACE INTO roles
                     (
@@ -1497,11 +1476,26 @@ class SQLiteBackend(Backend):
                     )
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
-                rows,
+                (
+                    role.id,
+                    role.guild_id,
+                    role.name,
+                    int(role.color),
+                    role.icon_hash,
+                    int(role.permissions),
+                    role.created_at.timestamp(),
+                    role.position,
+                    int(role.is_hoisted),
+                    int(role.bot_id) if role.bot_id is not None else None,
+                    int(role.is_premium_subscriber_role),
+                ),
+                confirm,
             )
-            await self._connection.commit()
 
-        if future:
-            future.set_result(None)
+            if confirm:
+                futures.append(future)
 
-        return future
+        if not futures:
+            return None
+
+        return asyncio.gather(*futures, return_exceptions=True)

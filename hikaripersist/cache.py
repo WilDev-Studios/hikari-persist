@@ -343,7 +343,7 @@ class Cache:
             event.user_id,
         ):
             logger.debug(
-                "Ignoring MEMBER_CREATE - ruleset violation:"
+                "Ignoring MEMBER_CREATE - ruleset violation: "
                 f"UserID={event.user_id}, GuildID={event.guild_id}"
             )
             return None
@@ -389,7 +389,7 @@ class Cache:
             event.author_id,
         ):
             logger.debug(
-                "Ignoring MESSAGE_CREATE - ruleset violation:"
+                "Ignoring MESSAGE_CREATE - ruleset violation: "
                 f"MessageID={event.message_id}, ChannelID={event.channel_id}"
             )
             return None
@@ -421,7 +421,7 @@ class Cache:
             event.author_id,
         ):
             logger.debug(
-                "Ignoring MESSAGE_UPDATE - ruleset violation:"
+                "Ignoring MESSAGE_UPDATE - ruleset violation: "
                 f"MessageID={event.message_id}, ChannelID={event.channel_id}"
             )
             return None
@@ -441,7 +441,7 @@ class Cache:
             event.role_id,
         ):
             logger.debug(
-                "Ignoring ROLE_CREATE - ruleset violation:"
+                "Ignoring ROLE_CREATE - ruleset violation: "
                 f"RoleID={event.role_id}, GuildID={event.guild_id}"
             )
             return None
@@ -467,7 +467,7 @@ class Cache:
             event.role_id,
         ):
             logger.debug(
-                "Ignoring ROLE_UPDATE - ruleset violation:"
+                "Ignoring ROLE_UPDATE - ruleset violation: "
                 f"RoleID={event.role_id}, GuildID={event.guild_id}"
             )
             return None
@@ -513,6 +513,12 @@ class Cache:
         confirm : bool
             If `True`, not dispatched until the cache has confirmed the change.
             If `False`, dispatched as soon as the cache receives the event.
+
+        Note
+        ----
+        To ensure that the cache sees all event data before being handled, the cache acts as a
+        middle-man in event dispatching. Instead of using `@bot.listen()`, use `@cache.listen()`
+        and the cache will dispatch each event normally after it's complete.
         """
 
         def wrapper(
@@ -548,6 +554,9 @@ class Cache:
                     raise TypeError(error)
 
                 event = annotation
+
+            if event not in self._handlers and event not in self._listeners:
+                self._bot.subscribe(event, self.__event)
 
             self._listeners.setdefault(event, []).append((func, confirm))
 
@@ -599,6 +608,9 @@ class Cache:
             If `True`, not dispatched until the cache has confirmed the change.
             If `False`, dispatched as soon as the cache receives the event.
         """
+
+        if event not in self._handlers and event not in self._listeners:
+            self._bot.subscribe(event, self.__event)
 
         self._listeners.setdefault(event, []).append((callback, confirm))
 
