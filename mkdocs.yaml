@@ -83,6 +83,7 @@ nav:
       - ~.role: pages/api/cached/role.md
     - hikaripersist.impl:
       - ~.iterator: pages/api/impl/iterator.md
+      - ~.query: pages/api/impl/query.md
     - hikaripersist.rule: pages/api/rule.md
   - Changelog:
     - Index: pages/changelog/index.md
