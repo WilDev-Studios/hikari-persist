@@ -33,7 +33,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install pip --upgrade
-        python -m pip install pytest
+        python -m pip install pytest hikari
 
     - name: Test
       run: pytest
