@@ -7,7 +7,7 @@ This page provides a high-level overview of changes in each release. For full de
 
 ## 0.1.0 (In Progress)
 
-### 0.1.0a3 (Staging)
+### 0.1.0a3 (March 8th, 2026)
 
 - `CacheIterator` for lazy, async iteration of cached objects.
 - `Cache` accessor properties: `channels`, `guilds`, `members`, `messages`, and `roles`.

@@ -6,7 +6,7 @@
     <img src="https://img.shields.io/pypi/dm/hikari-persist?style=for-the-badge&color=007EC6"/><br/>
     <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=for-the-badge&color=002F4B"/>
     <img src="https://img.shields.io/readthedocs/hikari-persist?style=for-the-badge&color=002F4B"/>
-    <!--<img src="https://img.shields.io/github/actions/workflow/status/WilDev-Studios/hikari-persist/build.yml?branch=main&style=for-the-badge&label=Build/Tests&color=002F4B">-->
+    <img src="https://img.shields.io/github/actions/workflow/status/WilDev-Studios/hikari-persist/build.yml?branch=main&style=for-the-badge&label=Build/Tests&color=002F4B">
     <img src="https://img.shields.io/pypi/status/hikari-persist?style=for-the-badge&color=002F4B"/>
 </p>
 
@@ -123,7 +123,7 @@ Database migration is implemented, but early development is cumbersome when gett
 ## Implemented Features
 
 - [X] Basic objects (messages, channels, guilds, members, etc.)
-- [ ] Advanced lookups (batches, search, filter)
+- [X] Advanced lookups (filter, map, limit, etc.)
 - [X] Advanced object metadata
 - [ ] Opt-in hydration (cache fail -> REST fetch)
 - Database backends:
