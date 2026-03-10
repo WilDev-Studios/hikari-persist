@@ -9,7 +9,7 @@ This page provides a high-level overview of changes in each release. For full de
 
 ### 0.1.0a4 (STAGING)
 
-- Replace tagged-tuple pipeline with typed step classes, eliminating per-step cloning in `CacheIterator`.
+- Replace tagged-tuple pipeline with typed step classes, eliminating per-step cloning in `CacheIterator`, as well as fixing the stop signal being clobbered by later pipeline steps and being lost on early skip break.
 
 ### 0.1.0a3 (March 8th, 2026)
 

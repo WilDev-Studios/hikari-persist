@@ -5,39 +5,62 @@ from collections.abc import (
     AsyncIterator,
     Callable,
     Generator,
+    Hashable,
 )
 from dataclasses import dataclass
 from typing import (
     Any,
     cast,
     Generic,
+    Protocol,
+    TYPE_CHECKING,
     TypeVar,
 )
 
-__all__ = ("CacheIterator",)
+if TYPE_CHECKING:
+    from _typeshed import SupportsRichComparison
+
+__all__ = (
+    "CacheIterator",
+    "CacheIteratorStep",
+)
 
 T = TypeVar('T')
 U = TypeVar('U')
 
-class _Step(Generic[T, U]):
-    __slots__ = ()
+class CacheIteratorStep(Protocol[T, U]):
+    """
+    Implement a custom iterator pipeline step.
+    """
+
+    def __call__(self, item: T) -> tuple[U, bool, bool]:
+        """
+        Return (value, skip, stop).
+
+        ```
+        stop = True, skip = True   -> Skip this value, then stop.
+        stop = True, skip = False  -> Yield this value, then stop.
+        stop = False, skip = True  -> Skip this value, continue.
+        stop = False, skip = False -> Yield this value, continue.
+        ```
+        """
 
 @dataclass(slots=True)
-class _Filter(_Step[T, T]):
+class _Filter(CacheIteratorStep[T, T]):
     fn: Callable[[T], bool]
 
     def __call__(self, item: T) -> tuple[T, bool, bool]:
         return item, not self.fn(item), False
 
 @dataclass(slots=True)
-class _Map(_Step[T, U]):
+class _Map(CacheIteratorStep[T, U]):
     fn: Callable[[T], U]
 
     def __call__(self, item: T) -> tuple[U, bool, bool]:
         return self.fn(item), False, False
 
 @dataclass(slots=True)
-class _TakeWhile(_Step[T, T]):
+class _TakeWhile(CacheIteratorStep[T, T]):
     fn: Callable[[T], bool]
 
     def __call__(self, item: T) -> tuple[T, bool, bool]:
@@ -69,7 +92,7 @@ class CacheIterator(Generic[T]):
         """
 
         self._source: AsyncIterator[T] = source
-        self._pipeline: list[_Step[Any, Any]] = []
+        self._pipeline: list[CacheIteratorStep[Any, Any]] = []
         self._limit: int | None = None
 
     def __aiter__(self) -> AsyncIterator[T]:
@@ -87,21 +110,38 @@ class CacheIterator(Generic[T]):
 
             value: Any = item
             skip: bool = False
+            stop: bool = False
 
             for step in self._pipeline:
                 value, skip, stop = step(value)
 
-                if stop:
-                    return
-
-                if skip:
+                if skip or stop:
                     break
 
-            if skip:
-                continue
+            if not skip:
+                yield value
+                yielded += 1
 
-            yield value
-            yielded += 1
+            if stop:
+                return
+
+    def add_step(self, step: CacheIteratorStep[T, U]) -> CacheIterator[U]:
+        """
+        Add a custom-implemented CacheIteratorStep into the iterator's pipeline.
+
+        Parameters
+        ----------
+        step : CacheIteratorStep[T, U]
+            The iterator step to add.
+
+        Returns
+        -------
+        CacheIterator[U]
+            A chain-callable async iterator over the results.
+        """
+
+        self._pipeline.append(step)
+        return self
 
     async def all(self, predicate: Callable[[T], bool]) -> bool:
         """
@@ -455,7 +495,7 @@ class CacheIterator(Generic[T]):
     async def sort(
         self,
         *,
-        key: Callable[[T], Any] | None = None,
+        key: Callable[[T], SupportsRichComparison] | None = None,
         reverse: bool = False,
     ) -> list[T]:
         """
@@ -463,7 +503,7 @@ class CacheIterator(Generic[T]):
 
         Parameters
         ----------
-        key : Callable[[T], Any] | None
+        key : Callable[[T], SupportsRichComparison] | None
             If provided, a method used to extract a comparison key from each item.
         reverse : bool
             If `True`, sorts in descending order.
@@ -494,13 +534,13 @@ class CacheIterator(Generic[T]):
         self._pipeline.append(_TakeWhile(predicate))
         return self
 
-    def unique(self, *, key: Callable[[T], Any] | None = None) -> CacheIterator[T]:
+    def unique(self, *, key: Callable[[T], Hashable] | None = None) -> CacheIterator[T]:
         """
         Yield only unique items, discarding duplicates.
 
         Parameters
         ----------
-        key : Callable[[T], Any] | None
+        key : Callable[[T], Hashable] | None
             If provided, uniqueness is determined by the key value rather than the item itself.
 
         Returns
@@ -510,10 +550,10 @@ class CacheIterator(Generic[T]):
         """
 
         async def _unique_source() -> AsyncGenerator[T, None]:
-            seen: set[Any] = set()
+            seen: set[Hashable] = set()
 
             async for item in self:
-                item_key: Any = key(item) if key is not None else item
+                item_key: Hashable = key(item) if key is not None else item
 
                 if item_key in seen:
                     continue

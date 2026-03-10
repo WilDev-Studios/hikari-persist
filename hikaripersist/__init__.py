@@ -11,6 +11,7 @@ __all__ = (  # noqa: RUF022
     "Backend",
     "Cache",
     "CacheIterator",
+    "CacheIteratorStep",
     "CachedChannel",
     "CachedGuild",
     "CachedMember",
@@ -44,7 +45,10 @@ from hikaripersist.cached import (
     CachedRole,
 )
 from hikaripersist.cache import Cache
-from hikaripersist.impl import CacheIterator
+from hikaripersist.impl import (
+    CacheIterator,
+    CacheIteratorStep,
+)
 from hikaripersist.rule import (
     ChannelRule,
     GuildRule,

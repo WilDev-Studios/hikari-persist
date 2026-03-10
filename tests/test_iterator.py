@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from hikaripersist.impl.iterator import CacheIterator
 from typing import Any
 
@@ -809,3 +809,120 @@ class TestChaining:
     async def test_max_after_filter(self) -> None:
         result = await make(1, 2, 3, 4, 5).filter(lambda x: x % 2 == 0).max(key=lambda x: x)
         assert result == 4
+
+# ---------------------------------------------------------------------------
+# add_step / custom _Step
+# ---------------------------------------------------------------------------
+
+class _ExclusiveStop:
+    """Custom step: stop=True, skip=True — skip the triggering item then stop."""
+    def __init__(self, fn: Callable[[Any], bool]) -> None:
+        self.fn = fn
+
+    def __call__(self, item: Any) -> tuple[Any, bool, bool]:
+        stop = self.fn(item)
+        return item, stop, stop  # same as _TakeWhile
+
+
+class _InclusiveStop:
+    """Custom step: stop=True, skip=False — yield the triggering item then stop."""
+    def __init__(self, fn: Callable[[Any], bool]) -> None:
+        self.fn = fn
+
+    def __call__(self, item: Any) -> tuple[Any, bool, bool]:
+        stop = self.fn(item)
+        return item, False, stop  # yield then stop
+
+
+class _Double:
+    """Custom step: maps item to item * 2."""
+    def __call__(self, item: Any) -> tuple[Any, bool, bool]:
+        return item * 2, False, False
+
+
+class TestAddStep:
+    @pytest.mark.asyncio
+    async def test_add_step_returns_self(self) -> None:
+        base = make(1, 2, 3)
+        result = base.add_step(_Double())
+        assert result is base
+
+    @pytest.mark.asyncio
+    async def test_add_step_custom_map(self) -> None:
+        result = await make(1, 2, 3).add_step(_Double()).collect()
+        assert result == [2, 4, 6]
+
+    @pytest.mark.asyncio
+    async def test_add_step_exclusive_stop(self) -> None:
+        # stop=True, skip=True — triggering item is not yielded
+        result = await make(1, 2, 3, 4, 5).add_step(_ExclusiveStop(lambda x: x == 3)).collect()
+        assert result == [1, 2]
+
+    @pytest.mark.asyncio
+    async def test_add_step_inclusive_stop(self) -> None:
+        # stop=True, skip=False — triggering item is yielded, then stops
+        result = await make(1, 2, 3, 4, 5).add_step(_InclusiveStop(lambda x: x == 3)).collect()
+        assert result == [1, 2, 3]
+
+    @pytest.mark.asyncio
+    async def test_add_step_inclusive_stop_first_item(self) -> None:
+        result = await make(1, 2, 3).add_step(_InclusiveStop(lambda x: x == 1)).collect()
+        assert result == [1]
+
+    @pytest.mark.asyncio
+    async def test_add_step_exclusive_stop_first_item(self) -> None:
+        result = await make(1, 2, 3).add_step(_ExclusiveStop(lambda x: x == 1)).collect()
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_add_step_inclusive_stop_last_item(self) -> None:
+        result = await make(1, 2, 3).add_step(_InclusiveStop(lambda x: x == 3)).collect()
+        assert result == [1, 2, 3]
+
+    @pytest.mark.asyncio
+    async def test_add_step_no_trigger(self) -> None:
+        # predicate never true — all items yielded
+        result = await make(1, 2, 3).add_step(_InclusiveStop(lambda x: x == 99)).collect()
+        assert result == [1, 2, 3]
+
+    @pytest.mark.asyncio
+    async def test_add_step_empty(self) -> None:
+        result = await empty().add_step(_InclusiveStop(lambda x: True)).collect()
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_add_step_chained_with_filter(self) -> None:
+        result = (
+            await make(1, 2, 3, 4, 5)
+            .filter(lambda x: x % 2 != 0)   # 1, 3, 5
+            .add_step(_InclusiveStop(lambda x: x == 3))  # 1, 3 then stop
+            .collect()
+        )
+        assert result == [1, 3]
+
+    @pytest.mark.asyncio
+    async def test_add_step_chained_with_map(self) -> None:
+        result = (
+            await make(1, 2, 3, 4, 5)
+            .add_step(_InclusiveStop(lambda x: x == 3))  # 1, 2, 3 then stop
+            .map(lambda x: x * 10)
+            .collect()
+        )
+        assert result == [10, 20, 3]
+
+    @pytest.mark.asyncio
+    async def test_add_step_appends_to_pipeline(self) -> None:
+        base = make(1, 2, 3)
+        base.add_step(_Double())
+        base.add_step(_Double())
+        assert len(base._pipeline) == 2
+
+    @pytest.mark.asyncio
+    async def test_add_step_skip_only(self) -> None:
+        # stop=False, skip=True for odd items — behaves like filter
+        class _SkipOdds:
+            def __call__(self, item: Any) -> tuple[Any, bool, bool]:
+                return item, item % 2 != 0, False
+
+        result = await make(1, 2, 3, 4, 5).add_step(_SkipOdds()).collect()
+        assert result == [2, 4]
