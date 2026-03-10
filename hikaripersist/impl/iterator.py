@@ -8,6 +8,7 @@ from collections.abc import (
     Hashable,
 )
 from dataclasses import dataclass
+from itertools import count as i_count
 from typing import (
     Any,
     cast,
@@ -64,8 +65,10 @@ class _TakeWhile(CacheIteratorStep[T, T]):
     fn: Callable[[T], bool]
 
     def __call__(self, item: T) -> tuple[T, bool, bool]:
-        stop: bool = not self.fn(item)
-        return item, stop, stop
+        if not self.fn(item):
+            return item, True, True
+
+        return item, False, False
 
 class CacheIterator(Generic[T]):
     """Asynchronous iterator for cached objects."""
@@ -87,12 +90,13 @@ class CacheIterator(Generic[T]):
 
         Note
         ----
-        The source iterator is shared across clones produced by chaining methods.
-        Iterating multiple chains derived from the same base concurrently is not supported.
+        The source iterator is shared across transformations created from this iterator.
+        Multiple concurrent iterations are not supported.
         """
 
         self._source: AsyncIterator[T] = source
         self._pipeline: list[CacheIteratorStep[Any, Any]] = []
+
         self._limit: int | None = None
 
     def __aiter__(self) -> AsyncIterator[T]:
@@ -102,25 +106,31 @@ class CacheIterator(Generic[T]):
         return self.collect().__await__()
 
     async def __iterate(self) -> AsyncGenerator[T, None]:
+        pipeline: tuple[CacheIteratorStep[Any, Any], ...] = tuple(self._pipeline)
+        limit: int | None = self._limit
+
         yielded: int = 0
 
         async for item in self._source:
-            if self._limit is not None and yielded >= self._limit:
+            if limit is not None and yielded >= limit:
                 break
 
             value: Any = item
             skip: bool = False
             stop: bool = False
 
-            for step in self._pipeline:
-                value, skip, stop = step(value)
+            for step in pipeline:
+                value, skip, stop_step = step(value)
 
-                if skip or stop:
+                if stop_step:
+                    stop = True
+
+                if skip:
                     break
 
             if not skip:
                 yield value
-                yielded += 1
+                yielded = yielded + 1
 
             if stop:
                 return
@@ -228,9 +238,10 @@ class CacheIterator(Generic[T]):
         """
 
         result: list[T] = []
+        append: Callable[[T], None] = result.append
 
         async for item in self:
-            result.append(item)
+            append(item)
 
         return result
 
@@ -247,7 +258,7 @@ class CacheIterator(Generic[T]):
         total: int = 0
 
         async for _ in self:
-            total += 1
+            total = total + 1
 
         return total
 
@@ -266,12 +277,10 @@ class CacheIterator(Generic[T]):
             A chain-callable async iterator over the enumerated results.
         """
 
-        counter: list[int] = [start]
+        counter: i_count = i_count(start)
 
         def _enumerate(item: T) -> tuple[int, T]:
-            index: int = counter[0]
-            counter[0] += 1
-            return index, item
+            return next(counter), item
 
         return self.map(_enumerate)
 
@@ -316,6 +325,29 @@ class CacheIterator(Generic[T]):
                     yield sub
 
         return CacheIterator(_flat_source())
+
+    async def find(self, predicate: Callable[[T], bool]) -> T | None:
+        """
+        Find the first item in the iterator that passes the predicate.
+
+        Parameters
+        ----------
+        predicate : Callable[[T], bool]
+            The predicate method to check against each item.
+
+        Returns
+        -------
+        T | None
+            If passed, the first item.
+        """
+
+        async for item in self:
+            if not predicate(item):
+                continue
+
+            return item
+
+        return None
 
     async def first(self) -> T | None:
         """
@@ -403,12 +435,15 @@ class CacheIterator(Generic[T]):
         result: T | None = None
         result_key: Any = None
 
+        found: bool = False
+
         async for item in self:
             item_key: Any = key(item)
 
-            if result_key is None or item_key > result_key:
+            if not found or item_key > result_key:
                 result = item
                 result_key = item_key
+                found = True
 
         return result
 
@@ -430,12 +465,15 @@ class CacheIterator(Generic[T]):
         result: T | None = None
         result_key: Any = None
 
+        found: bool = False
+
         async for item in self:
             item_key: Any = key(item)
 
-            if result_key is None or item_key < result_key:
+            if not found or item_key < result_key:
                 result = item
                 result_key = item_key
+                found = True
 
         return result
 
@@ -553,7 +591,7 @@ class CacheIterator(Generic[T]):
             seen: set[Hashable] = set()
 
             async for item in self:
-                item_key: Hashable = key(item) if key is not None else item
+                item_key: Hashable = cast(Hashable, item) if key is None else key(item)
 
                 if item_key in seen:
                     continue
@@ -580,11 +618,11 @@ class CacheIterator(Generic[T]):
         """
 
         async def _zip_source() -> AsyncGenerator[tuple[T, U], None]:
-            other_iter: AsyncIterator[U] = other.__aiter__()
+            other_iter: AsyncIterator[U] = aiter(other)
 
             async for item in self:
                 try:
-                    other_item: U = await other_iter.__anext__()
+                    other_item: U = await anext(other_iter)
                 except StopAsyncIteration:
                     break
 

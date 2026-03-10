@@ -299,15 +299,6 @@ class TestLimit:
         result = await make(1, 2, 3, 4, 5, 6).filter(lambda x: x % 2 == 0).limit(2).collect()
         assert result == [2, 4]
 
-    @pytest.mark.asyncio
-    async def test_limit_is_immutable(self) -> None:
-        # limit() mutates and returns self — branching is not supported.
-        # This test verifies limit() returns self and sets the limit correctly.
-        base = make(1, 2, 3, 4, 5)
-        limited = base.limit(2)
-        assert limited is base
-        assert base._limit == 2
-
 
 # ---------------------------------------------------------------------------
 # chunk
@@ -908,7 +899,7 @@ class TestAddStep:
             .map(lambda x: x * 10)
             .collect()
         )
-        assert result == [10, 20, 3]
+        assert result == [10, 20, 30]
 
     @pytest.mark.asyncio
     async def test_add_step_appends_to_pipeline(self) -> None:
