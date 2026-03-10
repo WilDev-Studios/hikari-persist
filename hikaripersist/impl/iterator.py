@@ -6,6 +6,7 @@ from collections.abc import (
     Callable,
     Generator,
 )
+from dataclasses import dataclass
 from typing import (
     Any,
     cast,
@@ -21,29 +22,23 @@ U = TypeVar('U')
 class _Step(Generic[T, U]):
     __slots__ = ()
 
+@dataclass(slots=True)
 class _Filter(_Step[T, T]):
-    __slots__ = ("fn",)
-
-    def __init__(self, fn: Callable[[T], bool]) -> None:
-        self.fn = fn
+    fn: Callable[[T], bool]
 
     def __call__(self, item: T) -> tuple[T, bool, bool]:
         return item, not self.fn(item), False
 
+@dataclass(slots=True)
 class _Map(_Step[T, U]):
-    __slots__ = ("fn",)
-
-    def __init__(self, fn: Callable[[T], U]) -> None:
-        self.fn = fn
+    fn: Callable[[T], U]
 
     def __call__(self, item: T) -> tuple[U, bool, bool]:
         return self.fn(item), False, False
 
+@dataclass(slots=True)
 class _TakeWhile(_Step[T, T]):
-    __slots__ = ("fn",)
-
-    def __init__(self, fn: Callable[[T], bool]) -> None:
-        self.fn = fn
+    fn: Callable[[T], bool]
 
     def __call__(self, item: T) -> tuple[T, bool, bool]:
         stop: bool = not self.fn(item)
