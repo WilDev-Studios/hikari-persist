@@ -7,7 +7,7 @@ This page provides a high-level overview of changes in each release. For full de
 
 ## 0.1.0 (In Progress)
 
-### 0.1.0a4 (STAGING)
+### 0.1.0a4 (March 16th, 2026)
 
 - Replace tagged-tuple pipeline with typed step classes, eliminating per-step cloning in `CacheIterator`, as well as fixing the stop signal being clobbered by later pipeline steps and being lost on early skip break.
 - Removal of custom cache objects in favor of `hikari`-native objects.
