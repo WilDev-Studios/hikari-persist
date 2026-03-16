@@ -67,6 +67,26 @@ cache = persist.Cache(bot, persist.SQLiteBackend("cache.db"))
 bot.run()
 ```
 
+The cache automatically gathers data as dispatched by the `GatewayBot` and populates the persistent cache.
+To access all data cached, the `Cache` object exposes public-facing query properties.
+
+Examples of iterating through the cache looks like this:
+
+```python
+async def channels():
+    async for channel in cache.channels.all():
+        ... # Lazily iterate through all cached channels
+
+    async for channel in cache.channels.where(name="general", type=hikari.ChannelType.GUILD_TEXT):
+        print(type(channel)) # >>> <class 'hikari.GuildTextChannel'>
+```
+
+The `.all()` query method returns an async iterator over the cache.
+The `.where()` query method returns a filtered async iterator over the cache.
+
+The iterator itself, `CacheIterator`, exposes methods like `filter`, `map`, `limit`, `chunk`, etc. for convenience.
+Each object returned by the cache is a native `hikari` object, like `GuildTextChannel`, `Role`, `Member`, etc.
+
 To ensure that the cache sees all event data before being handled, the cache acts as a middle-man in event dispatching.
 Instead of using `@bot.listen()`, use `@cache.listen()` and the cache will dispatch each event normally after it's complete.
 
@@ -88,21 +108,19 @@ The difference between the two is this:
 
 ```python
 @cache.listen()
-async def event_listener_1(event: hikari.GuildMessageCreateEvent):
-    message = await cache.get_message(event.message_id, event.channel_id)
+async def event_listener_1(event: hikari.Event):
+    async for guild in cache.guilds.where(id=event.guild_id).limit(1):
+        print(guild)
 
-    print(message)
-
-@cache.listen(confirm=True)
-async def event_listener_2(event: hikari.GuildMessageCreateEvent):
-    message = await cache.get_message(event.message_id, event.channel_id)
-
-    print(message)
+@cache.listen()
+async def event_listener_2(event: hikari.Event):
+    async for guild in cache.guilds.where(id=event.guild_id).limit(1):
+        print(guild)
 ```
 
 ```bash
->>> None (or sometimes `persist.CachedMessage`)
->>> `persist.CachedMessage`
+>>> None (or sometimes `hikari.Guild`)
+>>> `hikari.Guild`
 ```
 
 The `confirm=True` ensures the cache is up to date before dispatching the event. Otherwise, it's not guaranteed.
@@ -112,21 +130,19 @@ The confirmation logic does introduce slight latency to the event dispatch, but 
 
 TL;DR:
 - `confirm=False` (or omitted): Fire-and-forget (default, very fast)
-- `confirm-True`: Waits for database write to complete (slight latency)
+- `confirm=True`: Waits for database write to complete (slight latency)
 
 ## Cache/Database Stability
 
 Before `1.0.0`, the database schema may change between versions.
 If this occurs, delete your cache database and allow it to rebuild.
 
-Database migration is implemented, but early development is cumbersome when getting the API stabilized.
+Database migration is implemented, but early migration is cumbersome when getting the API stabilized.
 
 ## Implemented Features
 
-- [X] Basic objects (messages, channels, guilds, members, etc.)
+- [X] Basic objects (channels, guilds, members, etc.)
 - [X] Advanced lookups (filter, map, limit, etc.)
-- [X] Advanced object metadata
-- [ ] Opt-in hydration (cache fail -> REST fetch)
 - Database backends:
     - [X] SQLite
     - [ ] MySQL
@@ -151,9 +167,21 @@ Feel free to join the [hikari](https://discord.gg/hikari) Discord server under t
 
 `hikari-persist` follows **Semantic Versioning** with a clear and practical stability model designed to balance rapid development with reliability.
 
-### Version Format
+### Discord API Changes
 
-`MAJOR.MINOR.PATCH`
+Though `hikari-persist` follows **Semantic Versioning**, there is one exception to the versioning requirements/standard:
+
+Breaking changes caused by Discord API modifications, such as removed or renamed fields, changed behavior, or deprecated endpoints, will result in a **minor** version bump rather than a major one. This is because such changes are outside the library's control and do not reflect a design decision made by this project.
+
+If you are pinning to a specific version and Discord introduces a breaking API change, upgrading to the new minor release may require changes to your code. The changelog will always clearly identify when a bump is driven by a Discord API change.
+
+`hikari-persist` pins to specific tested versions of `hikari`. Any breaking changes in `hikari` may affect this library's behavior, and a correlating update will be released for each new `hikari` version. It is recommended to pin your dependency to a specific minor version but allow patch updates, allowing bug fixes while avoiding potentially breaking minor updates, something like `hikari-persist~=1.2.0`.
+
+| Bump            | Reason                                                       |
+|-----------------|--------------------------------------------------------------|
+| Major (`X.0.0`) | Breaking changes to the library's own API                    |
+| Minor (`x.Y.0`) | New features; breaking changes forced by Discord or `hikari` |
+| Patch (`x.y.Z`) | Bug fixes; internal improvements                             |
 
 ### Patch Releases (`x.y.Z`)
 
@@ -169,13 +197,12 @@ Patch releases are safe to upgrade to without code changes.
 - Introduce new features, subsystems, or configuration options
 - Existing public APIs generally preserved, but behavior may expand
 - May include **short-lived alpha/beta pre-releases** before stabilization
-
-Example releases flow:
-`1.0.0a1 -> 1.0.0b1 -> 1.0.0 -> 1.0.1`
-Pre-releases exist to gather feedback and catch issues early. Once stabilized, the same version is released as a stable minor.
+- Discord API or `hikari` breaking changes
 
 ### Pre-Releases (`a`/`b`)
 
 - Used only for **new minor/major versions**
 - Intended for developers who want early access to new features/versions
 - Not recommended for production unless you are testing upcoming functionality
+
+Pre-releases exist to gather feedback and catch issues early. Once stabilized, the same version is released as a stable minor.

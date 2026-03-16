@@ -9,7 +9,6 @@ __all__ = (
     "ChannelRule",
     "GuildRule",
     "MemberRule",
-    "MessageRule",
     "RoleRule",
     "Rule",
 )
@@ -227,124 +226,6 @@ class MemberRule:
 
         return True
 
-class MessageRule:
-    """Message cache rule."""
-
-    def __init__( # noqa: PLR0913
-        self,
-        *,
-        channel_denylist: Iterable[hikari.Snowflakeish] | None = None,
-        channel_allowlist: Iterable[hikari.Snowflakeish] | None = None,
-        guild_denylist: Iterable[hikari.Snowflakeish] | None = None,
-        guild_allowlist: Iterable[hikari.Snowflakeish] | None = None,
-        message_denylist: Iterable[hikari.Snowflakeish] | None = None,
-        message_allowlist: Iterable[hikari.Snowflakeish] | None = None,
-        user_denylist: Iterable[hikari.Snowflakeish] | None = None,
-        user_allowlist: Iterable[hikari.Snowflakeish] | None = None,
-    ) -> None:
-        """
-        Create a cache message rule.
-
-        Parameters
-        ----------
-        channel_denylist : Iterable[hikari.Snowflakeish] | None
-            If provided, an iterable of channels to ignore.
-        channel_allowlist : Iterable[hikari.Snowflakeish] | None
-            If provided, ignore all channels except these.
-        guild_denylist : Iterable[hikari.Snowflakeish] | None
-            If provided, an iterable of guilds to ignore.
-        guild_allowlist : Iterable[hikari.Snowflakeish] | None
-            If provided, ignore all guilds except these.
-        message_denylist : Iterable[hikari.Snowflakeish] | None
-            If provided, an iterable of messages to ignore.
-        message_allowlist : Iterable[hikari.Snowflakeish] | None
-            If provided, ignore all messages except these.
-        user_denylist : Iterable[hikari.Snowflakeish] | None
-            If provided, an iterable of users to ignore.
-        user_allowlist : Iterable[hikari.Snowflakeish] | None
-            If provided, ignore all users except these.
-
-        Raises
-        ------
-        TypeError
-            If any parameter is provided and is not `Iterable` of `hikari.Snowflakeish`.
-        """
-
-        self._channel_denylist: set[hikari.Snowflake] = to_snowflake_set(
-            channel_denylist,
-            "channel_denylist",
-        )
-        self._channel_allowlist: set[hikari.Snowflake] = to_snowflake_set(
-            channel_allowlist,
-            "channel_allowlist",
-        )
-        self._guild_denylist: set[hikari.Snowflake] = to_snowflake_set(
-            guild_denylist,
-            "guild_denylist",
-        )
-        self._guild_allowlist: set[hikari.Snowflake] = to_snowflake_set(
-            guild_allowlist,
-            "guild_allowlist",
-        )
-        self._message_denylist: set[hikari.Snowflake] = to_snowflake_set(
-            message_denylist,
-            "message_denylist",
-        )
-        self._message_allowlist: set[hikari.Snowflake] = to_snowflake_set(
-            message_allowlist,
-            "message_allowlist",
-        )
-        self._user_denylist: set[hikari.Snowflake] = to_snowflake_set(
-            user_denylist,
-            "user_denylist",
-        )
-        self._user_allowlist: set[hikari.Snowflake] = to_snowflake_set(
-            user_allowlist,
-            "user_allowlist",
-        )
-
-        self._messages: bool = False
-
-    def can_cache( # noqa: PLR0911
-        self,
-        channel_id: hikari.Snowflake,
-        guild_id: hikari.Snowflake,
-        message_id: hikari.Snowflake,
-        user_id: hikari.Snowflake,
-    ) -> bool:
-        """
-        Return whether a message passes the rule.
-        """
-
-        if not self._messages:
-            return False
-
-        if channel_id in self._channel_denylist:
-            return False
-
-        if self._channel_allowlist and channel_id not in self._channel_allowlist:
-            return False
-
-        if guild_id in self._guild_denylist:
-            return False
-
-        if self._guild_allowlist and guild_id not in self._guild_allowlist:
-            return False
-
-        if message_id in self._message_denylist:
-            return False
-
-        if self._message_allowlist and message_id not in self._message_allowlist:
-            return False
-
-        if user_id in self._user_denylist:
-            return False
-
-        if self._user_allowlist and user_id not in self._user_allowlist: # noqa: SIM103
-            return False
-
-        return True
-
 class RoleRule:
     """Role cache rule."""
 
@@ -420,7 +301,6 @@ class Rule:
         channel: ChannelRule | None = None,
         guild: GuildRule | None = None,
         member: MemberRule | None = None,
-        message: MessageRule | None = None,
         role: RoleRule | None = None,
     ) -> None:
         """
@@ -434,8 +314,6 @@ class Rule:
             If provided, rule regarding guild caching.
         member : MemberRule | None
             If provided, rule regarding member caching.
-        message : MessageRule | None
-            If provided, rule regarding message caching.
         role : RoleRule | None
             If provided, rule regarding role caching.
 
@@ -445,7 +323,6 @@ class Rule:
             - If `channel` is provided and is not `ChannelRule`.
             - If `guild` is provided and is not `GuildRule`.
             - If `member` is provided and is not `MemberRule`.
-            - If `message` is provided and is not `MessageRule`.
             - If `role` is provided and is not `RoleRule`.
         """
 
@@ -460,10 +337,6 @@ class Rule:
         self._member: MemberRule = (
             verify_type(member, MemberRule, "member")
             if member else MemberRule()
-        )
-        self._message: MessageRule = (
-            verify_type(message, MessageRule, "message")
-            if message else MessageRule()
         )
         self._role: RoleRule = (
             verify_type(role, RoleRule, "role")

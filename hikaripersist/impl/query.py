@@ -1,168 +1,269 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from datetime import (
-    datetime,
-    timezone,
-)
+from dataclasses import dataclass
 from hikaripersist.impl.iterator import CacheIterator
-from typing import TYPE_CHECKING
+from typing import (
+    Literal,
+    overload,
+    TYPE_CHECKING,
+)
 
 if TYPE_CHECKING:
+    from datetime import timedelta
     from hikaripersist.cache import Cache
-    from hikaripersist.cached.channel import CachedChannel
-    from hikaripersist.cached.guild import CachedGuild
-    from hikaripersist.cached.member import CachedMember
-    from hikaripersist.cached.message import CachedMessage
-    from hikaripersist.cached.role import CachedRole
 
     import hikari
 
 __all__ = ()
 
-class BaseQuery(ABC):
+@dataclass(slots=True)
+class BaseQuery:
     """Base backend query blueprint."""
 
-    @abstractmethod
-    def __init__(self, cache: Cache) -> None:
-        """
-        Create a new backend query blueprint.
-
-        Parameters
-        ----------
-        cache : Cache
-            Reference to the cache.
-        """
-
-        self._cache: Cache = cache
-
-        self._limit: int | None = None
+    _cache: Cache
+    """Reference to the handling cache."""
 
 class ChannelQuery(BaseQuery):
-    """Channel backend query blueprint."""
+    """Channel backend query."""
 
     def __init__(self, cache: Cache) -> None:
         super().__init__(cache)
 
-        self._category: hikari.Snowflake | None = None
-        self._channel_id: hikari.Snowflake | None = None
-        self._created_after: datetime | None = None
-        self._created_before: datetime | None = None
-        self._guild_id: hikari.Snowflake | None = None
+        self._id: hikari.Snowflake | None = None
         self._name: str | None = None
-        self._nsfw: bool | None = None
-        self._position: int | None = None
-        self._topic: str | None = None
         self._type: hikari.ChannelType | None = None
+        self._guild_id: hikari.Snowflake | None = None
+        self._parent_id: hikari.Snowflake | None = None
+        self._position: int | None = None
+        self._is_nsfw: bool | None = None
 
-    def all(self) -> CacheIterator[CachedChannel]:
+    def all(self) -> CacheIterator[hikari.GuildChannel]:
         """
         Retrieve all results.
 
         Returns
         -------
-        CacheIterator[CachedChannel]
+        CacheIterator[hikari.GuildChannel]
             An asynchronous iterator providing lazy access to the results.
         """
 
         return CacheIterator(self._cache._backend.iter_channels(self))
 
+    @overload
+    def where(
+        self,
+        *,
+        id: hikari.Snowflake | None = None,
+        name: str | None = None,
+        type: Literal[hikari.ChannelType.GUILD_TEXT],
+        guild_id: hikari.Snowflake | None = None,
+        parent_id: hikari.Snowflake | None = None,
+        position: int | None = None,
+        is_nsfw: bool | None = None,
+    ) -> CacheIterator[hikari.GuildTextChannel]:...
+
+    @overload
+    def where(
+        self,
+        *,
+        id: hikari.Snowflake | None = None,
+        name: str | None = None,
+        type: Literal[hikari.ChannelType.GUILD_VOICE],
+        guild_id: hikari.Snowflake | None = None,
+        parent_id: hikari.Snowflake | None = None,
+        position: int | None = None,
+        is_nsfw: bool | None = None,
+    ) -> CacheIterator[hikari.GuildVoiceChannel]:...
+
+    @overload
+    def where(
+        self,
+        *,
+        id: hikari.Snowflake | None = None,
+        name: str | None = None,
+        type: Literal[hikari.ChannelType.GUILD_CATEGORY],
+        guild_id: hikari.Snowflake | None = None,
+        parent_id: hikari.Snowflake | None = None,
+        position: int | None = None,
+        is_nsfw: bool | None = None,
+    ) -> CacheIterator[hikari.GuildCategory]:...
+
+    @overload
+    def where(
+        self,
+        *,
+        id: hikari.Snowflake | None = None,
+        name: str | None = None,
+        type: Literal[hikari.ChannelType.GUILD_NEWS],
+        guild_id: hikari.Snowflake | None = None,
+        parent_id: hikari.Snowflake | None = None,
+        position: int | None = None,
+        is_nsfw: bool | None = None,
+    ) -> CacheIterator[hikari.GuildNewsChannel]:...
+
+    @overload
+    def where(
+        self,
+        *,
+        id: hikari.Snowflake | None = None,
+        name: str | None = None,
+        type: Literal[hikari.ChannelType.GUILD_NEWS_THREAD],
+        guild_id: hikari.Snowflake | None = None,
+        parent_id: hikari.Snowflake | None = None,
+        position: int | None = None,
+        is_nsfw: bool | None = None,
+    ) -> CacheIterator[hikari.GuildNewsThread]:...
+
+    @overload
+    def where(
+        self,
+        *,
+        id: hikari.Snowflake | None = None,
+        name: str | None = None,
+        type: Literal[hikari.ChannelType.GUILD_PUBLIC_THREAD],
+        guild_id: hikari.Snowflake | None = None,
+        parent_id: hikari.Snowflake | None = None,
+        position: int | None = None,
+        is_nsfw: bool | None = None,
+    ) -> CacheIterator[hikari.GuildPublicThread]:...
+
+    @overload
+    def where(
+        self,
+        *,
+        id: hikari.Snowflake | None = None,
+        name: str | None = None,
+        type: Literal[hikari.ChannelType.GUILD_PRIVATE_THREAD],
+        guild_id: hikari.Snowflake | None = None,
+        parent_id: hikari.Snowflake | None = None,
+        position: int | None = None,
+        is_nsfw: bool | None = None,
+    ) -> CacheIterator[hikari.GuildPrivateThread]:...
+
+    @overload
+    def where(
+        self,
+        *,
+        id: hikari.Snowflake | None = None,
+        name: str | None = None,
+        type: Literal[hikari.ChannelType.GUILD_STAGE],
+        guild_id: hikari.Snowflake | None = None,
+        parent_id: hikari.Snowflake | None = None,
+        position: int | None = None,
+        is_nsfw: bool | None = None,
+    ) -> CacheIterator[hikari.GuildStageChannel]:...
+
+    @overload
+    def where(
+        self,
+        *,
+        id: hikari.Snowflake | None = None,
+        name: str | None = None,
+        type: Literal[hikari.ChannelType.GUILD_FORUM],
+        guild_id: hikari.Snowflake | None = None,
+        parent_id: hikari.Snowflake | None = None,
+        position: int | None = None,
+        is_nsfw: bool | None = None,
+    ) -> CacheIterator[hikari.GuildForumChannel]:...
+
+    @overload
+    def where(
+        self,
+        *,
+        id: hikari.Snowflake | None = None,
+        name: str | None = None,
+        type: Literal[hikari.ChannelType.GUILD_MEDIA],
+        guild_id: hikari.Snowflake | None = None,
+        parent_id: hikari.Snowflake | None = None,
+        position: int | None = None,
+        is_nsfw: bool | None = None,
+    ) -> CacheIterator[hikari.GuildMediaChannel]:...
+
+    @overload
+    def where(
+        self,
+        *,
+        id: hikari.Snowflake | None = None,
+        name: str | None = None,
+        type: hikari.ChannelType | None = None,
+        guild_id: hikari.Snowflake | None = None,
+        parent_id: hikari.Snowflake | None = None,
+        position: int | None = None,
+        is_nsfw: bool | None = None,
+    ) -> CacheIterator[hikari.GuildChannel]:
+        ...
+
     def where( # noqa: PLR0913
         self,
         *,
-        category: hikari.Snowflake | None = None,
-        channel_id: hikari.Snowflake | None = None,
-        created_after: datetime | None = None,
-        created_before: datetime | None = None,
-        guild_id: hikari.Snowflake | None = None,
+        id: hikari.Snowflake | None = None, # noqa: A002
         name: str | None = None,
-        nsfw: bool | None = None,
+        type: hikari.ChannelType | None = None, # noqa: A002
+        guild_id: hikari.Snowflake | None = None,
+        parent_id: hikari.Snowflake | None = None,
         position: int | None = None,
-        topic: str | None = None,
-        type_: hikari.ChannelType | None = None,
-        limit: int | None = None,
-    ) -> CacheIterator[CachedChannel]:
+        is_nsfw: bool | None = None,
+    ) -> CacheIterator[hikari.GuildChannel]:
         """
         Filter the results using various metadata options.
 
-        Parameters
-        ----------
-        category : hikari.Snowflake | None
-            If provided, filter using the channel's category ID.
-        channel_id : hikari.Snowflake | None
-            If provided, filter using the channel's ID.
-        created_after : datetime | None
-            If provided, filter if created after this timestamp.
-            If timezone-aware, will be converted to UTC.
-        created_before : datetime | None
-            If provided, filter if created before this timestamp.
-            If timezone-aware, will be converted to UTC.
-        guild_id : hikari.Snowflake | None
-            If provided, filter using the guild's ID.
-        name : str | None
-            If provided, filter using the channel's name.
-        nsfw : bool | None
-            If provided, filter using the NSFW level.
-        position : int | None
-            If provided, filter using the channel's position.
-        topic : str | None
-            If provided, filter using the phrase.
-        type_ : hikari.ChannelType | None
-            If provided, filter using the channel's type.
-        limit : int | None
-            If provided, a limit on how many results are retrieved.
-
         Returns
         -------
-        CacheIterator[CachedChannel]
+        CacheIterator[hikari.GuildChannel]
             An asynchronous iterator providing lazy access to the results.
         """
 
-        self._category = category
-        self._channel_id = channel_id
-
-        if created_after:
-            self._created_after = created_after.astimezone(timezone.utc)
-
-        if created_before:
-            self._created_before = created_before.astimezone(timezone.utc)
-
-        self._guild_id = guild_id
+        self._id = id
         self._name = name
-        self._nsfw = nsfw
+        self._type = type
+        self._guild_id = guild_id
+        self._parent_id = parent_id
         self._position = position
-        self._topic = topic
-        self._type = type_
-
-        self._limit = limit
+        self._is_nsfw = is_nsfw
 
         return CacheIterator(self._cache._backend.iter_channels(self))
 
 class GuildQuery(BaseQuery):
-    """Guild backend query blueprint."""
+    """Guild backend query."""
 
     def __init__(self, cache: Cache) -> None:
         super().__init__(cache)
 
-        self._description: str | None = None
-        self._created_after: datetime | None = None
-        self._created_before: datetime | None = None
-        self._guild_id: hikari.Snowflake | None = None
-        self._mfa: hikari.GuildMFALevel | None = None
+        self._id: hikari.Snowflake | None = None
+        self._icon_hash: str | None = None
         self._name: str | None = None
-        self._nsfw: hikari.GuildNSFWLevel | None = None
+        self._application_id: hikari.Snowflake | None = None
+        self._afk_channel_id: hikari.Snowflake | None = None
+        self._afk_timeout: timedelta | None = None
+        self._banner_hash: str | None = None
+        self._default_message_notifications: hikari.GuildMessageNotificationsLevel | None = None
+        self._description: str | None = None
+        self._discovery_splash_hash: str | None = None
+        self._explicit_content_filter: hikari.GuildExplicitContentFilterLevel | None = None
+        self._is_widget_enabled: bool | None = None
+        self._max_video_channel_users: int | None = None
+        self._mfa_level: hikari.GuildMFALevel | None = None
         self._owner_id: hikari.Snowflake | None = None
-        self._premium: hikari.GuildPremiumTier | None = None
-        self._vanity: str | None = None
-        self._verification: hikari.GuildVerificationLevel | None = None
+        self._preferred_locale: hikari.Locale | None = None
+        self._premium_subscription_count: int | None = None
+        self._premium_tier: hikari.GuildPremiumTier | None = None
+        self._public_updates_channel_id: hikari.Snowflake | None = None
+        self._rules_channel_id: hikari.Snowflake | None = None
+        self._splash_hash: str | None = None
+        self._system_channel_flags: hikari.GuildSystemChannelFlag | None = None
+        self._system_channel_id: hikari.Snowflake | None = None
+        self._vanity_url_code: str | None = None
+        self._verification_level: hikari.GuildVerificationLevel | None = None
+        self._widget_channel_id: hikari.Snowflake | None = None
+        self._nsfw_level: hikari.GuildNSFWLevel | None = None
 
-    def all(self) -> CacheIterator[CachedGuild]:
+    def all(self) -> CacheIterator[hikari.Guild]:
         """
         Retrieve all results.
 
         Returns
         -------
-        CacheIterator[CachedGuild]
+        CacheIterator[hikari.Guild]
             An asynchronous iterator providing lazy access to the results.
         """
 
@@ -171,107 +272,93 @@ class GuildQuery(BaseQuery):
     def where( # noqa: PLR0913
         self,
         *,
-        description: str | None = None,
-        created_after: datetime | None = None,
-        created_before: datetime | None = None,
-        guild_id: hikari.Snowflake | None = None,
-        mfa: hikari.GuildMFALevel | None = None,
+        id: hikari.Snowflake | None = None, # noqa: A002
+        icon_hash: str | None = None,
         name: str | None = None,
-        nsfw: hikari.GuildNSFWLevel | None = None,
+        application_id: hikari.Snowflake | None = None,
+        afk_channel_id: hikari.Snowflake | None = None,
+        afk_timeout: timedelta | None = None,
+        banner_hash: str | None = None,
+        default_message_notifications: hikari.GuildMessageNotificationsLevel | None = None,
+        description: str | None = None,
+        discovery_splash_hash: str | None = None,
+        explicit_content_filter: hikari.GuildExplicitContentFilterLevel | None = None,
+        is_widget_enabled: bool | None = None,
+        max_video_channel_users: int | None = None,
+        mfa_level: hikari.GuildMFALevel | None = None,
         owner_id: hikari.Snowflake | None = None,
+        preferred_locale: hikari.Locale | None = None,
+        premium_subscription_count: int | None = None,
         premium_tier: hikari.GuildPremiumTier | None = None,
-        vanity_code: str | None = None,
-        verification: hikari.GuildVerificationLevel | None = None,
-        limit: int | None = None,
-    ) -> CacheIterator[CachedGuild]:
+        public_updates_channel_id: hikari.Snowflake | None = None,
+        rules_channel_id: hikari.Snowflake | None = None,
+        splash_hash: str | None = None,
+        system_channel_flags: hikari.GuildSystemChannelFlag | None = None,
+        system_channel_id: hikari.Snowflake | None = None,
+        vanity_url_code: str | None = None,
+        verification_level: hikari.GuildVerificationLevel | None = None,
+        widget_channel_id: hikari.Snowflake | None = None,
+        nsfw_level: hikari.GuildNSFWLevel | None = None,
+    ) -> CacheIterator[hikari.Guild]:
         """
         Filter the results using various metadata options.
 
-        Parameters
-        ----------
-        description : str | None
-            If provided, filter using the description.
-        created_after : datetime | None
-            If provided, filter if created after this timestamp.
-            If timezone-aware, will be converted to UTC.
-        created_before : datetime | None
-            If provided, filter if created before this timestamp.
-            If timezone-aware, will be converted to UTC.
-        guild_id : hikari.Snowflake | None
-            If provided, filter using the guild's ID.
-        mfa : hikari.GuildMFALevel | None
-            If provided, filter using MFA levels.
-        name : str | None
-            If provided, filter using the guild's name.
-        nsfw : hikari.GuildNSFWLevel | None
-            If provided, filter using the NSFW level.
-        owner_id : hikari.Snowflake | None
-            If provided, filter using the guild owner's ID.
-        premium_tier : hikari.GuildPremiumTier | None
-            If provided, filter using the premium tier.
-        vanity_code : str | None
-            If provided, filter using a vanity URL code.
-        verification : hikari.GuildVerificationLevel | None
-            If provided, filter using the verification level.
-        limit : int | None
-            If provided, a limit on how many results are retrieved.
-
         Returns
         -------
-        CacheIterator[CachedGuild]
+        CacheIterator[hikari.Guild]
             An asynchronous iterator providing lazy access to the results.
         """
 
-        self._description = description
-
-        if created_after:
-            self._created_after = created_after.astimezone(timezone.utc)
-
-        if created_before:
-            self._created_before = created_before.astimezone(timezone.utc)
-
-        self._guild_id = guild_id
-        self._mfa = mfa
+        self._id = id
+        self._icon_hash = icon_hash
         self._name = name
-        self._nsfw = nsfw
+        self._application_id = application_id
+        self._afk_channel_id = afk_channel_id
+        self._afk_timeout = afk_timeout
+        self._banner_hash = banner_hash
+        self._default_message_notifications = default_message_notifications
+        self._description = description
+        self._discovery_splash_hash = discovery_splash_hash
+        self._explicit_content_filter = explicit_content_filter
+        self._is_widget_enabled = is_widget_enabled
+        self._max_video_channel_users = max_video_channel_users
+        self._mfa_level = mfa_level
         self._owner_id = owner_id
-        self._premium = premium_tier
-        self._vanity = vanity_code
-        self._verification = verification
-
-        self._limit = limit
+        self._preferred_locale = preferred_locale
+        self._premium_subscription_count = premium_subscription_count
+        self._premium_tier = premium_tier
+        self._public_updates_channel_id = public_updates_channel_id
+        self._rules_channel_id = rules_channel_id
+        self._splash_hash = splash_hash
+        self._system_channel_flags = system_channel_flags
+        self._system_channel_id = system_channel_id
+        self._vanity_url_code = vanity_url_code
+        self._verification_level = verification_level
+        self._widget_channel_id = widget_channel_id
+        self._nsfw_level = nsfw_level
 
         return CacheIterator(self._cache._backend.iter_guilds(self))
 
 class MemberQuery(BaseQuery):
-    """"Member backend query blueprint."""
+    """Member backend query."""
 
     def __init__(self, cache: Cache) -> None:
         super().__init__(cache)
 
-        self._boosting_after: datetime | None = None
-        self._boosting_before: datetime | None = None
-        self._bot: bool | None = None
-        self._created_after: datetime | None = None
-        self._created_before: datetime | None = None
-        self._discriminator: str | None = None
-        self._flags: hikari.UserFlag | None = None
         self._guild_id: hikari.Snowflake | None = None
-        self._joined_after: datetime | None = None
-        self._joined_before: datetime | None = None
-        self._member_id: hikari.Snowflake | None = None
-        self._name: str | None = None
-        self._system: bool | None = None
-        self._timed_out: bool | None = None
-        self._username: str | None = None
+        self._id: hikari.Snowflake | None = None
+        self._nickname: str | None = None
+        self._guild_avatar_hash: str | None = None
+        self._guild_banner_hash: str | None = None
+        self._guild_flags: hikari.GuildMemberFlags | None = None
 
-    def all(self) -> CacheIterator[CachedMember]:
+    def all(self) -> CacheIterator[hikari.Member]:
         """
         Retrieve all results.
 
         Returns
         -------
-        CacheIterator[CachedMember]
+        CacheIterator[hikari.Member]
             An asynchronous iterator providing lazy access to the results.
         """
 
@@ -279,238 +366,61 @@ class MemberQuery(BaseQuery):
 
     def where( # noqa: PLR0913
         self,
-        *,
-        boosting_after: datetime | None = None,
-        boosting_before: datetime | None = None,
-        created_after: datetime | None = None,
-        created_before: datetime | None = None,
-        discriminator: str | None = None,
-        flags: hikari.UserFlag | None = None,
         guild_id: hikari.Snowflake | None = None,
-        is_bot: bool | None = None,
-        is_system: bool | None = None,
-        is_timed_out: bool | None = None,
-        joined_after: datetime | None = None,
-        joined_before: datetime | None = None,
         member_id: hikari.Snowflake | None = None,
-        name: str | None = None,
-        username: str | None = None,
-        limit: int | None = None,
-    ) -> CacheIterator[CachedMember]:
+        nickname: str | None = None,
+        guild_avatar_hash: str | None = None,
+        guild_banner_hash: str | None = None,
+        guild_flags: hikari.GuildMemberFlags | None = None,
+    ) -> CacheIterator[hikari.Member]:
         """
         Filter the results using various metadata options.
 
-        Parameters
-        ----------
-        boosting_after : datetime | None
-            If provided, filter if boosting since after this timestamp.
-            If timezone-aware, will be converted to UTC.
-        boosting_before : datetime | None
-            If provided, filter if boosting since before this timestamp.
-            If timezone-aware, will be converted to UTC.
-        created_after : datetime | None
-            If provided, filter if created after this timestamp.
-            If timezone-aware, will be converted to UTC.
-        created_before : datetime | None
-            If provided, filter if created before this timestamp.
-            If timezone-aware, will be converted to UTC.
-        discriminator : str | None
-            If provided, filter using a discriminator.
-        flags : hikari.UserFlag | None
-            If provided, filter using user flags.
-        guild_id : hikari.Snowflake | None
-            If provided, filter using the member's guild ID.
-        is_bot : bool | None
-            If provided, filter if the member is a bot.
-        is_system : bool | None
-            If provided, filter if the member is a system account.
-        is_timed_out : bool | None
-            If provided, filter if the member is timed out.
-        joined_after : datetime | None
-            If provided, filter if joined after this timestamp.
-            If timezone-aware, will be converted to UTC.
-        joined_before : datetime | None
-            If provided, filter if joined before this timestamp.
-            If timezone-aware, will be converted to UTC.
-        member_id : hikari.Snowflake | None
-            If provided, filter using a member ID.
-        name : str | None
-            If provided, filter using a display name.
-        username : str | None
-            If provided, filter members by username.
-        limit : int | None
-            If provided, a limit on how many results are retrieved.
-
         Returns
         -------
-        CacheIterator[CachedMember]
+        CacheIterator[hikari.Member]
             An asynchronous iterator providing lazy access to the results.
         """
 
-        if boosting_after:
-            self._boosting_after = boosting_after.astimezone(timezone.utc)
-
-        if boosting_before:
-            self._boosting_before = boosting_before.astimezone(timezone.utc)
-
-        if created_after:
-            self._created_after = created_after.astimezone(timezone.utc)
-
-        if created_before:
-            self._created_before = created_before.astimezone(timezone.utc)
-
-        self._discriminator = discriminator
-        self._flags = flags
         self._guild_id = guild_id
-        self._bot = is_bot
-        self._system = is_system
-        self._timed_out = is_timed_out
-
-        if joined_after:
-            self._joined_after = joined_after.astimezone(timezone.utc)
-
-        if joined_before:
-            self._joined_before = joined_before.astimezone(timezone.utc)
-
-        self._member_id = member_id
-        self._name = name
-        self._username = username
-
-        self._limit = limit
+        self._id = member_id
+        self._nickname = nickname
+        self._guild_avatar_hash = guild_avatar_hash
+        self._guild_banner_hash = guild_banner_hash
+        self._guild_flags = guild_flags
 
         return CacheIterator(self._cache._backend.iter_members(self))
-
-class MessageQuery(BaseQuery):
-    """Message backend query blueprint."""
-
-    def __init__(self, cache: Cache) -> None:
-        super().__init__(cache)
-
-        self._author_id: hikari.Snowflake | None = None
-        self._channel_id: hikari.Snowflake | None = None
-        self._contains: str | None = None
-        self._created_after: datetime | None = None
-        self._created_before: datetime | None = None
-        self._edited_after: datetime | None = None
-        self._edited_before: datetime | None = None
-        self._guild_id: hikari.Snowflake | None = None
-        self._message_id: hikari.Snowflake | None = None
-        self._pinned: bool | None = None
-
-    def all(self) -> CacheIterator[CachedMessage]:
-        """
-        Retrieve all results.
-
-        Returns
-        -------
-        CacheIterator[CachedMessage]
-            An asynchronous iterator providing lazy access to the results.
-        """
-
-        return CacheIterator(self._cache._backend.iter_messages(self))
-
-    def where( # noqa: PLR0913
-        self,
-        *,
-        author_id: hikari.Snowflake | None = None,
-        channel_id: hikari.Snowflake | None = None,
-        contains: str | None = None,
-        created_after: datetime | None = None,
-        created_before: datetime | None = None,
-        edited_after: datetime | None = None,
-        edited_before: datetime | None = None,
-        guild_id: hikari.Snowflake | None = None,
-        is_pinned: bool | None = None,
-        message_id: hikari.Snowflake | None = None,
-        limit: int | None = None,
-    ) -> CacheIterator[CachedMessage]:
-        """
-        Filter the results using various metadata options.
-
-        Parameters
-        ----------
-        author_id : hikari.Snowflake | None
-            If provided, filter using the author's ID.
-        channel_id : hikari.Snowflake | None
-            If provided, filter using the channel's ID.
-        contains : str | None
-            If provided, filter using a phrase.
-        created_after : datetime | None
-            If provided, filter if created after this timestamp.
-            If timezone-aware, will be converted to UTC.
-        created_before : datetime | None
-            If provided, filter if created before this timestamp.
-            If timezone-aware, will be converted to UTC.
-        edited_after : datetime | None
-            If provided, filter if edited after this timestamp.
-            If timezone-aware, will be converted to UTC.
-        edited_before : datetime | None
-            If provided, filter if edited before this timestamp.
-            If timezone-aware, will be converted to UTC.
-        guild_id : hikari.Snowflake | None
-            If provided, filter using the guild's ID.
-        is_pinned : bool | None
-            If provided, filter through pinned messages.
-        message_id : hikari.Snowflake | None
-            If provided, filter using the message's ID.
-        limit : int | None
-            If provided, a limit on how many results are retrieved.
-
-        Returns
-        -------
-        CacheIterator[CachedMessage]
-            An asynchronous iterator providing lazy access to the results.
-        """
-
-        self._author_id = author_id
-        self._channel_id = channel_id
-        self._contains = contains
-
-        if created_after:
-            self._created_after = created_after.astimezone(timezone.utc)
-
-        if created_before:
-            self._created_before = created_before.astimezone(timezone.utc)
-
-        if edited_after:
-            self._edited_after = edited_after.astimezone(timezone.utc)
-
-        if edited_before:
-            self._edited_before = edited_before.astimezone(timezone.utc)
-
-        self._guild_id = guild_id
-        self._pinned = is_pinned
-        self._message_id = message_id
-
-        self._limit = limit
-
-        return CacheIterator(self._cache._backend.iter_messages(self))
 
 class RoleQuery(BaseQuery):
-    """Message backend query blueprint."""
+    """Message backend query."""
 
     def __init__(self, cache: Cache) -> None:
         super().__init__(cache)
 
-        self._color: hikari.Color | None = None
-        self._created_after: datetime | None = None
-        self._created_before: datetime | None = None
-        self._guild_id: hikari.Snowflake | None = None
-        self._hoisted: bool | None = None
-        self._managed: bool | None = None
+        self._id: hikari.Snowflake | None = None
         self._name: str | None = None
+        self._color: hikari.Color | None = None
+        self._guild_id: hikari.Snowflake | None = None
+        self._is_hoisted: bool | None = None
+        self._icon_hash: str | None = None
+        self._unicode_emoji: hikari.UnicodeEmoji | None = None
+        self._is_managed: bool | None = None
+        self._is_mentionable: bool | None = None
         self._permissions: hikari.Permissions | None = None
         self._position: int | None = None
-        self._premium: bool | None = None
-        self._role_id: hikari.Snowflake | None = None
+        self._bot_id: hikari.Snowflake | None = None
+        self._integration_id: hikari.Snowflake | None = None
+        self._is_premium_subscriber_role: bool | None = None
+        self._is_available_for_purchase: bool | None = None
+        self._is_guild_linked_role: bool | None = None
 
-    def all(self) -> CacheIterator[CachedRole]:
+    def all(self) -> CacheIterator[hikari.Role]:
         """
         Retrieve all results.
 
         Returns
         -------
-        CacheIterator[CachedRole]
+        CacheIterator[hikari.Role]
             An asynchronous iterator providing lazy access to the results.
         """
 
@@ -519,74 +429,47 @@ class RoleQuery(BaseQuery):
     def where( # noqa: PLR0913
         self,
         *,
+        id: hikari.Snowflake | None = None, # noqa: A002
+        name: str | None = None,
         color: hikari.Color | None = None,
-        created_after: datetime | None = None,
-        created_before: datetime | None = None,
         guild_id: hikari.Snowflake | None = None,
         is_hoisted: bool | None = None,
+        icon_hash: str | None = None,
+        unicode_emoji: hikari.UnicodeEmoji | None = None,
         is_managed: bool | None = None,
-        is_premium: bool | None = None,
-        name: str | None = None,
+        is_mentionable: bool | None = None,
         permissions: hikari.Permissions | None = None,
         position: int | None = None,
-        role_id: hikari.Snowflake | None = None,
-        limit: int | None = None,
-    ) -> CacheIterator[CachedRole]:
+        bot_id: hikari.Snowflake | None = None,
+        integration_id: hikari.Snowflake | None = None,
+        is_premium_subscriber_role: bool | None = None,
+        is_available_for_purchase: bool | None = None,
+        is_guild_linked_role: bool | None = None,
+    ) -> CacheIterator[hikari.Role]:
         """
         Filter the results using various metadata options.
 
-        Parameters
-        ----------
-        color : hikari.Color | None
-            If provided, filter by the color of the role.
-        created_after : datetime | None
-            If provided, filter if created after this timestamp.
-            If timezone-aware, will be converted to UTC.
-        created_before : datetime | None
-            If provided, filter if created before this timestamp.
-            If timezone-aware, will be converted to UTC.
-        guild_id : hikari.Snowflake | None
-            If provided, filter using the role's guild ID.
-        is_hoisted : bool | None
-            If provided, filter by the hoised state.
-        is_managed : bool | None
-            If provided, filter by managed/bot roles.
-        is_premium : bool | None
-            If provided, filter by boosting reward roles.
-        name : str | None
-            If provided, filter by the name of the role.
-        permissions : hikari.Permissions | None
-            If provided, filter by the permissions assigned to the role.
-        position : int | None
-            If provided, filter by the position of the role.
-        role_id : hikari.Snowflake | None
-            If provided, filter by the ID of the role.
-        limit : int | None
-            If provided, a limit on how many results are retrieved.
-
         Returns
         -------
-        CacheIterator[CachedRole]
+        CacheIterator[hikari.Role]
             An asynchronous iterator providing lazy access to the results.
         """
 
-        self._color = color
-
-        if created_after:
-            self._created_after = created_after.astimezone(timezone.utc)
-
-        if created_before:
-            self._created_before = created_before.astimezone(timezone.utc)
-
-        self._guild_id = guild_id
-        self._hoisted = is_hoisted
-        self._managed = is_managed
-        self._premium = is_premium
+        self._id = id
         self._name = name
+        self._color = color
+        self._guild_id = guild_id
+        self._is_hoisted = is_hoisted
+        self._icon_hash = icon_hash
+        self._unicode_emoji = unicode_emoji
+        self._is_managed = is_managed
+        self._is_mentionable = is_mentionable
         self._permissions = permissions
         self._position = position
-        self._role_id = role_id
-
-        self._limit = limit
+        self._bot_id = bot_id
+        self._integration_id = integration_id
+        self._is_premium_subscriber_role = is_premium_subscriber_role
+        self._is_available_for_purchase = is_available_for_purchase
+        self._is_guild_linked_role = is_guild_linked_role
 
         return CacheIterator(self._cache._backend.iter_roles(self))

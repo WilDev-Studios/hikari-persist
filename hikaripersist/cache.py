@@ -9,7 +9,6 @@ from hikaripersist.impl.query import (
     ChannelQuery,
     GuildQuery,
     MemberQuery,
-    MessageQuery,
     RoleQuery,
 )
 from hikaripersist.rule import Rule
@@ -39,7 +38,6 @@ class Cache:
         bot: hikari.GatewayBot,
         backend: Backend,
         *,
-        cache_messages: bool = False,
         rule: Rule | None = None,
     ) -> None:
         """
@@ -51,8 +49,6 @@ class Cache:
             The bot to interface this cache with.
         backend : Backend
             The database backend to use with this cache.
-        cache_messages : bool
-            If the cache should store messages.
         rule : Rule | None
             If provided, a ruleset regarding what is cached.
 
@@ -63,7 +59,6 @@ class Cache:
         TypeError
             - If `bot` is not `hikari.GatewayBot`.
             - If `backend` is not `Backend`.
-            - `cache_messages` is not `bool`.
             - If `rule` is provided and is not `Rule`.
         """
 
@@ -79,10 +74,6 @@ class Cache:
             error: str = "Provided backend must be Backend"
             raise TypeError(error)
 
-        if not isinstance(cache_messages, bool):
-            error: str = "Provided cache_messages must be bool"
-            raise TypeError(error)
-
         if rule is not None and not isinstance(rule, Rule):
             error: str = "Provided rule must be Rule"
             raise TypeError(error)
@@ -90,9 +81,10 @@ class Cache:
         Cache.__instance = self
 
         self._bot: hikari.GatewayBot = bot
+
         self._backend: Backend = backend
+        self._backend._cache = self
         self._rule: Rule = rule or Rule()
-        self._rule._message._messages = cache_messages
 
         self._listeners: dict[
             type[hikari.Event], list[tuple[Callable[[hikari.Event], Awaitable[None]], bool]]
@@ -107,17 +99,18 @@ class Cache:
             hikari.GuildJoinEvent:   self.__guild_join,
             hikari.GuildLeaveEvent:  self.__guild_leave,
             hikari.GuildUpdateEvent: self.__guild_update,
+            hikari.MemberChunkEvent: self.__member_chunk,
             hikari.MemberCreateEvent: self.__member_create,
             hikari.MemberDeleteEvent: self.__member_delete,
             hikari.MemberUpdateEvent: self.__member_update,
-            hikari.GuildMessageCreateEvent: self.__message_create,
-            hikari.GuildMessageDeleteEvent: self.__message_delete,
-            hikari.GuildMessageUpdateEvent: self.__message_update,
             hikari.RoleCreateEvent: self.__role_create,
             hikari.RoleDeleteEvent: self.__role_delete,
             hikari.RoleUpdateEvent: self.__role_update,
             hikari.StartingEvent: self.__bot_starting,
             hikari.StoppingEvent: self.__bot_stopping,
+            hikari.GuildThreadCreateEvent: self.__thread_create,
+            hikari.GuildThreadDeleteEvent: self.__thread_delete,
+            hikari.GuildThreadUpdateEvent: self.__thread_update,
         }
 
         for event in self._handlers:
@@ -333,6 +326,33 @@ class Cache:
         logger.debug(f"Cached GUILD_UPDATE: GuildID={event.guild_id}")
         return await self._backend.guild_update(event.guild, confirm)
 
+    async def __member_chunk(
+        self,
+        event: hikari.MemberChunkEvent,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        futures: list[asyncio.Future[None]] = []
+
+        for member in event.members.values():
+            if not self._rule._member.can_cache(
+                event.guild_id,
+                member.id,
+            ):
+                logger.debug(
+                    "Ignoring MEMBER_CHUNK:Member - ruleset violation: "
+                    "UserID=%s, GuildID=%s",
+                    member.id, event.guild_id,
+                )
+                continue
+
+            future: asyncio.Future[None] | None = await self._backend.member_create(member, confirm)
+
+            if confirm:
+                futures.append(future)
+
+        logger.debug("Cached MEMBER_CHUNK: GuildID=%s", event.guild_id)
+        return asyncio.gather(*futures, return_exceptions=True)
+
     async def __member_create(
         self,
         event: hikari.MemberCreateEvent,
@@ -377,60 +397,6 @@ class Cache:
         logger.debug(f"Cached MEMBER_UPDATE: UserID={event.user_id}, GuildID={event.guild_id}")
         return await self._backend.member_update(event.member, confirm)
 
-    async def __message_create(
-        self,
-        event: hikari.GuildMessageCreateEvent,
-        confirm: bool,
-    ) -> asyncio.Future[None] | None:
-        if not self._rule._message.can_cache(
-            event.channel_id,
-            event.message.guild_id,
-            event.message_id,
-            event.author_id,
-        ):
-            logger.debug(
-                "Ignoring MESSAGE_CREATE - ruleset violation: "
-                f"MessageID={event.message_id}, ChannelID={event.channel_id}"
-            )
-            return None
-
-        logger.debug(
-            f"Cached MESSAGE_CREATE: MessageID={event.message_id}, ChannelID={event.channel_id}"
-        )
-        return await self._backend.message_create(event.message, confirm)
-
-    async def __message_delete(
-        self,
-        event: hikari.GuildMessageDeleteEvent,
-        confirm: bool,
-    ) -> asyncio.Future[None] | None:
-        logger.debug(
-            f"Cached MESSAGE_DELETE: MessageID={event.message_id}, ChannelID={event.channel_id}"
-        )
-        return await self._backend.message_delete(event.message_id, event.channel_id, confirm)
-
-    async def __message_update(
-        self,
-        event: hikari.GuildMessageUpdateEvent,
-        confirm: bool,
-    ) -> asyncio.Future[None] | None:
-        if not self._rule._message.can_cache(
-            event.channel_id,
-            event.message.guild_id,
-            event.message_id,
-            event.author_id,
-        ):
-            logger.debug(
-                "Ignoring MESSAGE_UPDATE - ruleset violation: "
-                f"MessageID={event.message_id}, ChannelID={event.channel_id}"
-            )
-            return None
-
-        logger.debug(
-            f"Cached MESSAGE_UPDATE: MessageID={event.message_id}, ChannelID={event.channel_id}"
-        )
-        return await self._backend.message_update(event.message, confirm)
-
     async def __role_create(
         self,
         event: hikari.RoleCreateEvent,
@@ -474,6 +440,48 @@ class Cache:
 
         logger.debug(f"Cached ROLE_UPDATE: RoleID={event.role_id}, GuildID={event.guild_id}")
         return await self._backend.role_update(event.role, confirm)
+
+    async def __thread_create(
+        self,
+        event: hikari.GuildThreadCreateEvent,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        if not self._rule._channel.can_cache(
+            event.thread_id,
+            event.guild_id,
+        ):
+            logger.debug(
+                f"Ignoring THREAD_CREATE - ruleset violation: ThreadID={event.thread_id}"
+            )
+            return None
+
+        logger.debug(f"Cached THREAD_CREATE: ThreadID={event.thread_id}")
+        return await self._backend.channel_create(event.thread, confirm)
+
+    async def __thread_delete(
+        self,
+        event: hikari.GuildThreadDeleteEvent,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        logger.debug(f"Cached THREAD_DELETE: ThreadID={event.thread_id}")
+        return await self._backend.channel_delete(event.thread_id, confirm)
+
+    async def __thread_update(
+        self,
+        event: hikari.GuildThreadUpdateEvent,
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        if not self._rule._channel.can_cache(
+            event.thread_id,
+            event.guild_id,
+        ):
+            logger.debug(
+                f"Ignoring THREAD_UPDATE - ruleset violation: ThreadID={event.thread_id}"
+            )
+            return None
+
+        logger.debug(f"Cached THREAD_UPDATE: ThreadID={event.thread_id}")
+        return await self._backend.channel_update(event.thread, confirm)
 
     @property
     def bot(self) -> hikari.GatewayBot:
@@ -571,14 +579,6 @@ class Cache:
         """
 
         return MemberQuery(self)
-
-    @property
-    def messages(self) -> MessageQuery:
-        """
-        Interact with cache messages.
-        """
-
-        return MessageQuery(self)
 
     @property
     def roles(self) -> RoleQuery:

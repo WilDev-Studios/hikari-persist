@@ -5,15 +5,13 @@ from collections.abc import (
     Iterable,
 )
 from contextlib import suppress
-from hikaripersist.backend.base import Backend
-from hikaripersist.cached.channel import (
-    CachedChannel,
-    CachedPermissionOverwrite,
+from datetime import (
+    datetime,
+    timedelta,
+    timezone,
 )
-from hikaripersist.cached.guild import CachedGuild
-from hikaripersist.cached.member import CachedMember
-from hikaripersist.cached.message import CachedMessage
-from hikaripersist.cached.role import CachedRole
+from hikari import users
+from hikaripersist.backend.base import Backend
 from typing import Any, TYPE_CHECKING
 
 import asyncio
@@ -28,10 +26,10 @@ except ImportError:
 
 if TYPE_CHECKING:
     from hikaripersist.impl.query import (
+        BaseQuery,
         ChannelQuery,
         GuildQuery,
         MemberQuery,
-        MessageQuery,
         RoleQuery,
     )
 
@@ -40,15 +38,19 @@ __all__ = ("SQLiteBackend",)
 logger: logging.Logger = logging.getLogger("persist.sqlite")
 
 BATCH_SIZE_NORMAL: int = 100
-BATCH_SIZE_STARTUP: int = 1000
-
-MAX_VARIABLES: int = 999
 
 class SQLiteBackend(Backend):
     """Use `SQLite` as the persistent cache backend."""
 
     VERSION: int = 1
-    """The database schema version; updated for automatic migrations."""
+    """
+    The database schema version; updated for automatic migrations.
+
+    Warning
+    -------
+    Automatic migrations will not occur until `1.0.0`.
+    Until then, each update requires a deletion of cache.
+    """
 
     __slots__ = (
         "_connection",
@@ -91,109 +93,177 @@ class SQLiteBackend(Backend):
         self._ready: asyncio.Event = asyncio.Event()
 
     async def __create_schema(self) -> None:
-        await self._connection.execute("""
-            CREATE TABLE IF NOT EXISTS channels (
-                id       INTEGER NOT NULL PRIMARY KEY,
-                guild    INTEGER NOT NULL,
-                category INTEGER,
-                type     INTEGER NOT NULL,
-                created  REAL NOT NULL,
-                name     TEXT NOT NULL,
-                nsfw     INTEGER NOT NULL,
-                position INTEGER NOT NULL,
-                topic    TEXT
-            );
-        """)
-        await self._connection.execute("""
-            CREATE TABLE IF NOT EXISTS guilds (
-                id          INTEGER NOT NULL PRIMARY KEY,
-                name        TEXT NOT NULL,
-                description TEXT,
-                owner       INTEGER NOT NULL,
-                created     REAL NOT NULL,
-                icon        TEXT,
-                banner      TEXT,
-                nsfw        INTEGER NOT NULL,
-                mfa         INTEGER NOT NULL,
-                verification INTEGER NOT NULL,
-                features     TEXT,
-                vanity       TEXT,
-                premium      INTEGER NOT NULL
-            );
-        """)
-        await self._connection.execute("""
-            CREATE TABLE IF NOT EXISTS members (
-                id            INTEGER NOT NULL,
-                guild         INTEGER NOT NULL,
-                username      TEXT NOT NULL,
-                discriminator TEXT NOT NULL,
-                created       REAL NOT NULL,
-                joined        REAL NOT NULL,
-                avatar        TEXT NOT NULL,
-                banner        TEXT,
-                name          TEXT NOT NULL,
-                flags         INTEGER NOT NULL,
-                bot           INTEGER NOT NULL,
-                system        INTEGER NOT NULL,
-                roles         TEXT,
-                premium_since REAL,
-                timeout       REAL,
-                PRIMARY KEY (id, guild)
-            );
-        """)
-        await self._connection.execute("""
-            CREATE TABLE IF NOT EXISTS messages (
-                id      INTEGER NOT NULL,
-                channel INTEGER NOT NULL,
-                guild   INTEGER NOT NULL,
-                author  INTEGER NOT NULL,
-                created REAL NOT NULL,
-                pinned  INTEGER NOT NULL,
-                content TEXT,
-                edited  REAL,
-                PRIMARY KEY (id, channel)
-            );
-        """)
-        await self._connection.execute("""
-            CREATE TABLE IF NOT EXISTS permission_overwrites (
-                channel_id INTEGER NOT NULL,
-                target_id  INTEGER NOT NULL,
-                type       INTEGER NOT NULL,
-                allow      INTEGER NOT NULL,
-                deny       INTEGER NOT NULL,
-                PRIMARY KEY (channel_id, target_id),
-                FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE
-            );
-        """)
-        await self._connection.execute("""
-            CREATE TABLE IF NOT EXISTS roles (
-                id          INTEGER NOT NULL PRIMARY KEY,
-                guild       INTEGER NOT NULL,
-                name        TEXT NOT NULL,
-                color       INTEGER NOT NULL,
-                icon        TEXT,
-                permissions INTEGER NOT NULL,
-                created     REAL NOT NULL,
-                position    INTEGER NOT NULL,
-                hoisted     INTEGER NOT NULL,
-                bot         INTEGER,
-                premium     INTEGER NOT NULL
-            );
-        """)
         await self._connection.executescript("""
-            CREATE INDEX IF NOT EXISTS idx_channels_guild ON channels(guild);
-            CREATE INDEX IF NOT EXISTS idx_members_guild ON members(guild);
-            CREATE INDEX IF NOT EXISTS idx_roles_guild ON roles(guild);
-
-            CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel);
-            CREATE INDEX IF NOT EXISTS idx_messages_guild ON messages(guild);
-            CREATE INDEX IF NOT EXISTS idx_messages_author ON messages(author);
-            CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created);
-        """)
-        await self._connection.execute(
-            "CREATE VIRTUAL TABLE message_fts USING fts5(content);"
-        )
+            CREATE TABLE IF NOT EXISTS channels (
+                id                    INTEGER NOT NULL PRIMARY KEY,
+                name                  TEXT,
+                type                  INTEGER NOT NULL,
+                guild_id              INTEGER NOT NULL,
+                parent_id             INTEGER,
+                position              INTEGER,              -- !GUILD_NEWS_THREAD, !GUILD_PUBLIC_THREAD, !GUILD_PRIVATE_THREAD
+                is_nsfw               INTEGER,              -- !GUILD_NEWS_THREAD, !GUILD_PUBLIC_THREAD, !GUILD_PRIVATE_THREAD
+                permission_overwrites TEXT,                 -- !GUILD_NEWS_THREAD, !GUILD_PUBLIC_THREAD, !GUILD_PRIVATE_THREAD
+                topic                              TEXT,    -- GUILD_TEXT, GUILD_NEWS, GUILD_FORUM, GUILD_MEDIA
+                last_message_id                    INTEGER, -- GUILD_TEXT, GUILD_VOICE, GUILD_NEWS, GUILD_NEWS_THREAD, GUILD_PUBLIC_THREAD, GUILD_PRIVATE_THREAD, GUILD_STAGE
+                rate_limit_per_user                INTEGER, -- GUILD_TEXT, GUILD_NEWS_THREAD, GUILD_PUBLIC_THREAD, GUILD_PRIVATE_THREAD, GUILD_FORUM, GUILD_MEDIA
+                last_pin_timestamp                 REAL,    -- GUILD_TEXT, GUILD_NEWS, GUILD_NEWS_THREAD, GUILD_PUBLIC_THREAD, GUILD_PRIVATE_THREAD
+                default_auto_archive_duration      INTEGER, -- GUILD_TEXT, GUILD_NEWS, GUILD_FORUM, GUILD_MEDIA
+                bitrate                            INTEGER, -- GUILD_VOICE, GUILD_STAGE
+                region                             TEXT,    -- GUILD_VOICE, GUILD_STAGE
+                user_limit                         INTEGER, -- GUILD_VOICE, GUILD_STAGE
+                video_quality_mode                 INTEGER, -- GUILD_VOICE, GUILD_STAGE
+                approximate_message_count          INTEGER, -- GUILD_NEWS_THREAD, GUILD_PUBLIC_THREAD, GUILD_PRIVATE_THREAD
+                approximate_member_count           INTEGER, -- GUILD_NEWS_THREAD, GUILD_PUBLIC_THREAD, GUILD_PRIVATE_THREAD
+                member_thread_id                   INTEGER, -- GUILD_NEWS_THREAD, GUILD_PUBLIC_THREAD, GUILD_PRIVATE_THREAD (member field)
+                member_user_id                     INTEGER, -- GUILD_NEWS_THREAD, GUILD_PUBLIC_THREAD, GUILD_PRIVATE_THREAD (member field)
+                member_joined_at                   REAL,    -- GUILD_NEWS_THREAD, GUILD_PUBLIC_THREAD, GUILD_PRIVATE_THREAD (member field)
+                member_flags                       INTEGER, -- GUILD_NEWS_THREAD, GUILD_PUBLIC_THREAD, GUILD_PRIVATE_THREAD (member field)
+                owner_id                           INTEGER, -- GUILD_NEWS_THREAD, GUILD_PUBLIC_THREAD, GUILD_PRIVATE_THREAD
+                metadata_is_archived               INTEGER, -- GUILD_NEWS_THREAD, GUILD_PUBLIC_THREAD, GUILD_PRIVATE_THREAD (metadata field)
+                metadata_is_invitable              INTEGER, -- GUILD_NEWS_THREAD, GUILD_PUBLIC_THREAD, GUILD_PRIVATE_THREAD (metadata field)
+                metadata_auto_archive_duration     INTEGER, -- GUILD_NEWS_THREAD, GUILD_PUBLIC_THREAD, GUILD_PRIVATE_THREAD (metadata field)
+                metadata_archive_timestamp         INTEGER, -- GUILD_NEWS_THREAD, GUILD_PUBLIC_THREAD, GUILD_PRIVATE_THREAD (metadata field)
+                metadata_is_locked                 INTEGER, -- GUILD_NEWS_THREAD, GUILD_PUBLIC_THREAD, GUILD_PRIVATE_THREAD (metadata field)
+                metadata_created_at                REAL,    -- GUILD_NEWS_THREAD, GUILD_PUBLIC_THREAD, GUILD_PRIVATE_THREAD (metadata field)
+                applied_tag_ids                    TEXT,    -- GUILD_PUBLIC_THREAD
+                flags                              INTEGER, -- GUILD_PUBLIC_THREAD, GUILD_FORUM, GUILD_MEDIA
+                last_thread_id                     INTEGER, -- GUILD_FORUM, GUILD_MEDIA
+                default_thread_rate_limit_per_user INTEGER, -- GUILD_FORUM, GUILD_MEDIA
+                available_tags                     TEXT,    -- GUILD_FORUM, GUILD_MEDIA
+                default_sort_order                 INTEGER, -- GUILD_FORUM, GUILD_MEDIA
+                default_layout                     INTEGER, -- GUILD_FORUM, GUILD_MEDIA
+                default_reaction_emoji_id          INTEGER, -- GUILD_FORUM, GUILD_MEDIA
+                default_reaction_emoji_name        TEXT     -- GUILD_FORUM, GUILD_MEDIA
+            );
+            CREATE TABLE IF NOT EXISTS guilds (
+                id                            INTEGER NOT NULL PRIMARY KEY,
+                icon_hash                     TEXT,
+                name                          TEXT NOT NULL,
+                features                      TEXT,
+                incidents_invites_disabled_until REAL, -- incidents field
+                incidents_dms_disabled_until     REAL, -- incidents field
+                incidents_dm_spam_detected_at    REAL, -- incidents field
+                incidents_raid_detected_at       REAL, -- incidents field
+                application_id                INTEGER,
+                afk_channel_id                INTEGER,
+                afk_timeout                   INTEGER NOT NULL,
+                banner_hash                   TEXT,
+                default_message_notifications INTEGER NOT NULL,
+                description                   TEXT,
+                discovery_splash_hash         TEXT,
+                explicit_content_filter       INTEGER NOT NULL,
+                is_widget_enabled             INTEGER,
+                max_video_channel_users       INTEGER,
+                mfa_level                     INTEGER NOT NULL,
+                owner_id                      INTEGER NOT NULL,
+                preferred_locale              TEXT NOT NULL,
+                premium_subscription_count    INTEGER,
+                premium_tier                  INTEGER NOT NULL,
+                public_updates_channel_id     INTEGER,
+                rules_channel_id              INTEGER,
+                splash_hash                   TEXT,
+                system_channel_flags          INTEGER NOT NULL,
+                system_channel_id             INTEGER,
+                vanity_url_code               TEXT,
+                verification_level            INTEGER NOT NULL,
+                widget_channel_id             INTEGER,
+                nsfw_level                    INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS members (
+                id                               INTEGER NOT NULL,
+                guild_id                         INTEGER NOT NULL,
+                joined_at                        REAL,
+                nickname                         TEXT,
+                premium_since                    REAL,
+                raw_communication_disabled_until REAL,
+                role_ids                         TEXT,
+                guild_avatar_decoration_asset_hash TEXT,    -- guild_avatar_decoration field
+                guild_avatar_decoration_sku_id     INTEGER, -- guild_avatar_decoration field
+                guild_avatar_decoration_expires_at REAL,    -- guild_avatar_decoration field
+                guild_avatar_hash                TEXT,
+                guild_banner_hash                TEXT,
+                guild_flags                      INTEGER,
+                PRIMARY KEY (id, guild_id)
+            );
+            CREATE TABLE IF NOT EXISTS roles (
+                id                         INTEGER NOT NULL PRIMARY KEY,
+                name                       TEXT NOT NULL,
+                color                      INTEGER NOT NULL,
+                guild_id                   INTEGER NOT NULL,
+                is_hoisted                 INTEGER NOT NULL,
+                icon_hash                  TEXT,
+                unicode_emoji              TEXT,
+                is_managed                 INTEGER NOT NULL,
+                is_mentionable             INTEGER NOT NULL,
+                permissions                INTEGER NOT NULL,
+                position                   INTEGER NOT NULL,
+                bot_id                     INTEGER,
+                integration_id             INTEGER,
+                is_premium_subscriber_role INTEGER NOT NULL,
+                subscription_listing_id    INTEGER,
+                is_available_for_purchase  INTEGER NOT NULL,
+                is_guild_linked_role       INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS users (
+                id            INTEGER NOT NULL PRIMARY KEY,
+                discriminator TEXT NOT NULL,
+                username      TEXT NOT NULL,
+                global_name   TEXT,
+                avatar_decoration_asset_hash TEXT,    -- avatar_decoration field
+                avatar_decoration_sku_id     INTEGER, -- avatar_decoration field
+                avatar_decoration_expires_at REAL,    -- avatar_decoration field
+                avatar_hash   TEXT,
+                banner_hash   TEXT,
+                accent_color  INTEGER,
+                is_bot        INTEGER NOT NULL,
+                is_system     INTEGER NOT NULL,
+                flags         INTEGER NOT NULL,
+                primary_guild_identity_guild_id INTEGER, -- primary_guild field
+                primary_guild_identity_enabled  INTEGER, -- primary_guild field
+                primary_guild_tag               TEXT,    -- primary_guild field
+                primary_guild_badge_hash        TEXT     -- primary_guild field
+            );
+            CREATE INDEX IF NOT EXISTS idx_channels_guild ON channels(guild_id);
+            CREATE INDEX IF NOT EXISTS idx_members_guild ON members(guild_id);
+            CREATE INDEX IF NOT EXISTS idx_roles_guild ON roles(guild_id);
+        """) # noqa: E501
         await self._connection.commit()
+
+    def __build_query(
+        self,
+        query: BaseQuery,
+    ) -> tuple[list[str], list[object]]:
+        conditions: list[str] = []
+        parameters: list[object] = []
+
+        for name, value in query.__dict__.items():
+            if value is None:
+                continue
+
+            conditions.append(f"{name.removeprefix('_')} = ?")
+
+            if isinstance(value, (
+                bool,
+                hikari.ChannelType,
+                hikari.Color,
+                hikari.GuildExplicitContentFilterLevel,
+                hikari.GuildMessageNotificationsLevel,
+                hikari.GuildMFALevel,
+                hikari.GuildNSFWLevel,
+                hikari.GuildPremiumTier,
+                hikari.GuildSystemChannelFlag,
+                hikari.GuildVerificationLevel,
+                hikari.Permissions,
+            )):
+                parameters.append(int(value))
+            elif isinstance(value, timedelta):
+                parameters.append(value.total_seconds())
+            elif isinstance(value, hikari.UnicodeEmoji):
+                parameters.append(str(value))
+            else:
+                parameters.append(value)
+
+        return conditions, parameters
 
     async def __execute(
         self,
@@ -225,12 +295,6 @@ class SQLiteBackend(Backend):
 
             await self.__create_schema()
             current = SQLiteBackend.VERSION
-
-        #if current < 2:
-        #    logger.debug(f"Migrating database: v{current} -> v2")
-        #    # steps to migrate to v2, once implemented
-        #    current = 2
-        # and so on...
 
         await self._connection.execute(f"PRAGMA user_version = {SQLiteBackend.VERSION};")
         await self._connection.commit()
@@ -285,55 +349,203 @@ class SQLiteBackend(Backend):
 
     async def channel_create(
         self,
-        channel: hikari.PermissibleGuildChannel,
+        channel: hikari.GuildChannel,
         confirm: bool,
     ) -> asyncio.Future[None] | None:
-        futures: list[asyncio.Future[None]] = []
+        if not isinstance(channel, (
+            hikari.GuildNewsThread,
+            hikari.GuildPublicThread,
+            hikari.GuildPrivateThread,
+        )):
+            permission_overwrites: list[str] = [
+                f"{overwrite.id}:{int(overwrite.type)}:{int(overwrite.allow)}:{int(overwrite.deny)}"
+                for overwrite in channel.permission_overwrites.values()
+            ]
 
-        confirm_channel: asyncio.Future[None] | None = await self.__execute(
-            """
-                INSERT INTO channels
-                (id, guild, category, type, created, name, nsfw, position, topic)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
-            """,
-            (
-                channel.id,
-                channel.guild_id,
-                channel.parent_id,
-                int(channel.type),
-                channel.created_at.timestamp(),
-                channel.name,
-                int(channel.is_nsfw),
+        fields: list[str] = [
+            "id",
+            "name",
+            "type",
+            "guild_id",
+            "parent_id",
+        ]
+        parameters: list[Any] = [
+            channel.id,
+            channel.name,
+            int(channel.type),
+            channel.guild_id,
+            channel.parent_id,
+        ]
+
+        if not isinstance(channel, (
+            hikari.GuildNewsThread,
+            hikari.GuildPublicThread,
+            hikari.GuildPrivateThread,
+        )):
+            fields.extend([
+                "position",
+                "is_nsfw",
+                "permission_overwrites",
+            ])
+            parameters.extend([
                 channel.position,
-                getattr(channel, "topic", None),
-            ),
+                int(channel.is_nsfw),
+                '|'.join(permission_overwrites),
+            ])
+
+        if isinstance(channel, hikari.GuildTextChannel):
+            fields.extend([
+                "topic",
+                "last_message_id",
+                "rate_limit_per_user",
+                "last_pin_timestamp",
+                "default_auto_archive_duration",
+            ])
+            parameters.extend([
+                channel.topic,
+                channel.last_message_id,
+                channel.rate_limit_per_user.total_seconds(),
+                channel.last_pin_timestamp.astimezone(timezone.utc).timestamp()
+                if channel.last_pin_timestamp else None,
+                channel.default_auto_archive_duration.total_seconds(),
+            ])
+        elif isinstance(channel, (
+            hikari.GuildVoiceChannel,
+            hikari.GuildStageChannel,
+        )):
+            fields.extend([
+                "bitrate",
+                "region",
+                "user_limit",
+                "video_quality_mode",
+                "last_message_id",
+            ])
+            parameters.extend([
+                channel.bitrate,
+                channel.region,
+                channel.user_limit,
+                int(channel.video_quality_mode),
+                channel.last_message_id,
+            ])
+        elif isinstance(channel, hikari.GuildNewsChannel):
+            fields.extend([
+                "topic",
+                "last_message_id",
+                "last_pin_timestamp",
+                "default_auto_archive_duration",
+            ])
+            parameters.extend([
+                channel.topic,
+                channel.last_message_id,
+                channel.last_pin_timestamp.astimezone(timezone.utc).timestamp()
+                if channel.last_pin_timestamp else None,
+                channel.default_auto_archive_duration.total_seconds(),
+            ])
+        elif isinstance(channel, (
+            hikari.GuildNewsThread,
+            hikari.GuildPublicThread,
+            hikari.GuildPrivateThread,
+        )):
+            fields.extend([
+                "last_message_id",
+                "last_pin_timestamp",
+                "rate_limit_per_user",
+                "approximate_message_count",
+                "approximate_member_count",
+                "member_thread_id",
+                "member_user_id",
+                "member_joined_at",
+                "member_flags",
+                "owner_id",
+                "metadata_is_archived",
+                "metadata_is_invitable",
+                "metadata_auto_archive_duration",
+                "metadata_archive_timestamp",
+                "metadata_is_locked",
+                "metadata_created_at",
+            ])
+            parameters.extend([
+                channel.last_message_id,
+                channel.last_pin_timestamp.astimezone(timezone.utc).timestamp()
+                if channel.last_pin_timestamp else None,
+                channel.rate_limit_per_user.total_seconds(),
+                channel.approximate_message_count,
+                channel.approximate_member_count,
+                channel.member.thread_id
+                if channel.member else None,
+                channel.member.user_id
+                if channel.member else None,
+                channel.member.joined_at.astimezone(timezone.utc).timestamp()
+                if channel.member else None,
+                channel.member.flags
+                if channel.member else None,
+                channel.owner_id,
+                int(channel.metadata.is_archived),
+                int(channel.metadata.is_invitable),
+                channel.metadata.auto_archive_duration.total_seconds(),
+                channel.metadata.archive_timestamp.astimezone(timezone.utc).timestamp(),
+                int(channel.metadata.is_locked),
+                channel.metadata.created_at.astimezone(timezone.utc).timestamp()
+                if channel.metadata.created_at else None,
+            ])
+
+            if isinstance(channel, hikari.GuildPublicThread):
+                fields.extend([
+                    "applied_tag_ids",
+                    "flags",
+                ])
+                parameters.extend([
+                    ','.join(channel.applied_tag_ids) if channel.applied_tag_ids else None,
+                    int(channel.flags),
+                ])
+        elif isinstance(channel, (
+            hikari.GuildForumChannel,
+            hikari.GuildMediaChannel,
+        )):
+            fields.extend([
+                "topic",
+                "last_thread_id",
+                "rate_limit_per_user",
+                "default_thread_rate_limit_per_user",
+                "default_auto_archive_duration",
+                "flags",
+                "available_tags",
+                "default_sort_order",
+                "default_layout",
+                "default_reaction_emoji_id",
+                "default_reaction_emoji_name",
+            ])
+            parameters.extend([
+                channel.topic,
+                channel.last_thread_id,
+                channel.rate_limit_per_user.total_seconds(),
+                channel.default_thread_rate_limit_per_user.total_seconds(),
+                channel.default_auto_archive_duration.total_seconds(),
+                int(channel.flags),
+                '|'.join(
+                    f"{tag.id}:{tag.name}:{int(tag.moderated)}:{tag.emoji_id if tag.emoji_id else -1}" # noqa: E501
+                    for tag in channel.available_tags
+                )
+                if channel.available_tags else None,
+                int(channel.default_sort_order),
+                int(channel.default_layout),
+                channel.default_reaction_emoji_id,
+                str(channel.default_reaction_emoji_name)
+                if channel.default_reaction_emoji_name else None,
+            ])
+
+        future: asyncio.Future[None] | None = await self.__execute(
+            f"""
+                INSERT OR REPLACE INTO channels
+                ({', '.join(fields)})
+                VALUES ({', '.join('?' * len(fields))});
+            """,
+            tuple(parameters),
             confirm,
         )
 
-        for overwrite in channel.permission_overwrites.values():
-            confirm_overwrite: asyncio.Future[None] | None = await self.__execute(
-                """
-                    INSERT OR REPLACE INTO permission_overwrites
-                    (channel_id, target_id, type, allow, deny)
-                    VALUES (?, ?, ?, ?, ?);
-                """,
-                (
-                    channel.id,
-                    overwrite.id,
-                    int(overwrite.type),
-                    int(overwrite.allow),
-                    int(overwrite.deny),
-                ),
-                confirm,
-            )
-
-            if confirm:
-                futures.append(confirm_overwrite)
-
         if confirm:
-            futures.append(confirm_channel)
-
-            return asyncio.gather(*futures, return_exceptions=True)
+            return future
 
         return None
 
@@ -355,63 +567,198 @@ class SQLiteBackend(Backend):
 
     async def channel_update(
         self,
-        channel: hikari.PermissibleGuildChannel,
+        channel: hikari.GuildChannel,
         confirm: bool,
     ) -> asyncio.Future[None] | None:
-        futures: list[asyncio.Future[None]] = []
+        if not isinstance(channel, (
+            hikari.GuildNewsThread,
+            hikari.GuildPublicThread,
+            hikari.GuildPrivateThread,
+        )):
+            permission_overwrites: list[str] = [
+                f"{overwrite.id}:{int(overwrite.type)}:{int(overwrite.allow)}:{int(overwrite.deny)}"
+                for overwrite in channel.permission_overwrites.values()
+            ]
 
-        confirm_channel: asyncio.Future[None] | None = await self.__execute(
-            """
-                UPDATE channels SET category = ?, name = ?, nsfw = ?, position = ?, topic = ?
-                WHERE id = ?;
-            """,
-            (
-                channel.parent_id,
-                channel.name,
-                int(channel.is_nsfw),
+        fields: list[str] = [
+            "name = ?",
+            "parent_id = ?",
+        ]
+        parameters: list[Any] = [
+            channel.name,
+            channel.parent_id,
+        ]
+
+        if not isinstance(channel, (
+            hikari.GuildNewsThread,
+            hikari.GuildPublicThread,
+            hikari.GuildPrivateThread,
+        )):
+            fields.extend([
+                "position = ?",
+                "is_nsfw = ?",
+                "permission_overwrites = ?",
+            ])
+            parameters.extend([
                 channel.position,
-                getattr(channel, "topic", None),
-                channel.id,
-            ),
+                int(channel.is_nsfw),
+                '|'.join(permission_overwrites),
+            ])
+
+        if isinstance(channel, hikari.GuildTextChannel):
+            fields.extend([
+                "topic = ?",
+                "last_message_id = ?",
+                "rate_limit_per_user = ?",
+                "last_pin_timestamp = ?",
+                "default_auto_archive_duration = ?",
+            ])
+            parameters.extend([
+                channel.topic,
+                channel.last_message_id,
+                channel.rate_limit_per_user.total_seconds(),
+                channel.last_pin_timestamp.astimezone(timezone.utc).timestamp()
+                if channel.last_pin_timestamp else None,
+                channel.default_auto_archive_duration.total_seconds(),
+            ])
+        elif isinstance(channel, (
+            hikari.GuildVoiceChannel,
+            hikari.GuildStageChannel,
+        )):
+            fields.extend([
+                "bitrate = ?",
+                "region = ?",
+                "user_limit = ?",
+                "video_quality_mode = ?",
+                "last_message_id = ?",
+            ])
+            parameters.extend([
+                channel.bitrate,
+                channel.region,
+                channel.user_limit,
+                int(channel.video_quality_mode),
+                channel.last_message_id,
+            ])
+        elif isinstance(channel, hikari.GuildNewsChannel):
+            fields.extend([
+                "topic = ?",
+                "last_message_id = ?",
+                "last_pin_timestamp = ?",
+                "default_auto_archive_duration = ?",
+            ])
+            parameters.extend([
+                channel.topic,
+                channel.last_message_id,
+                channel.last_pin_timestamp.astimezone(timezone.utc).timestamp()
+                if channel.last_pin_timestamp else None,
+                channel.default_auto_archive_duration.total_seconds(),
+            ])
+        elif isinstance(channel, (
+            hikari.GuildNewsThread,
+            hikari.GuildPublicThread,
+            hikari.GuildPrivateThread,
+        )):
+            fields.extend([
+                "last_message_id = ?",
+                "last_pin_timestamp = ?",
+                "rate_limit_per_user = ?",
+                "approximate_message_count = ?",
+                "approximate_member_count = ?",
+                "member_thread_id = ?",
+                "member_user_id = ?",
+                "member_joined_at = ?",
+                "member_flags = ?",
+                "metadata_is_archived = ?",
+                "metadata_is_invitable = ?",
+                "metadata_auto_archive_duration = ?",
+                "metadata_archive_timestamp = ?",
+                "metadata_is_locked = ?",
+                "metadata_created_at = ?", # never expected to update, but there for sync
+            ])
+            parameters.extend([
+                channel.last_message_id,
+                channel.last_pin_timestamp.astimezone(timezone.utc).timestamp()
+                if channel.last_pin_timestamp else None,
+                channel.rate_limit_per_user.total_seconds(),
+                channel.approximate_message_count,
+                channel.approximate_member_count,
+                channel.member.thread_id
+                if channel.member else None,
+                channel.member.user_id
+                if channel.member else None,
+                channel.member.joined_at.astimezone(timezone.utc).timestamp()
+                if channel.member else None,
+                channel.member.flags
+                if channel.member else None,
+                int(channel.metadata.is_archived),
+                int(channel.metadata.is_invitable),
+                channel.metadata.auto_archive_duration.total_seconds(),
+                channel.metadata.archive_timestamp.astimezone(timezone.utc).timestamp(),
+                int(channel.metadata.is_locked),
+                channel.metadata.created_at.astimezone(timezone.utc).timestamp()
+                if channel.metadata.created_at else None,
+            ])
+
+            if isinstance(channel, hikari.GuildPublicThread):
+                fields.extend([
+                    "applied_tag_ids = ?",
+                    "flags = ?",
+                ])
+                parameters.extend([
+                    ','.join(channel.applied_tag_ids),
+                    int(channel.flags),
+                ])
+        elif isinstance(channel, (
+            hikari.GuildForumChannel,
+            hikari.GuildMediaChannel,
+        )):
+            fields.extend([
+                "topic = ?",
+                "last_thread_id = ?",
+                "rate_limit_per_user = ?",
+                "default_thread_rate_limit_per_user = ?",
+                "default_auto_archive_duration = ?",
+                "flags = ?",
+                "available_tags = ?",
+                "default_sort_order = ?",
+                "default_layout = ?",
+                "default_reaction_emoji_id = ?",
+                "default_reaction_emoji_name = ?",
+            ])
+            parameters.extend([
+                channel.topic,
+                channel.last_thread_id,
+                channel.rate_limit_per_user.total_seconds(),
+                channel.default_thread_rate_limit_per_user.total_seconds(),
+                channel.default_auto_archive_duration.total_seconds(),
+                int(channel.flags),
+                '|'.join(
+                    f"{tag.id}:{tag.name}:{int(tag.moderated)}:{tag.emoji_id if tag.emoji_id else -1}" # noqa: E501
+                    for tag in channel.available_tags
+                )
+                if channel.available_tags else None,
+                int(channel.default_sort_order),
+                int(channel.default_layout),
+                channel.default_reaction_emoji_id,
+                str(channel.default_reaction_emoji_name)
+                if channel.default_reaction_emoji_name else None,
+            ])
+
+        parameters.append(channel.id)
+
+        future: asyncio.Future[None] | None = await self.__execute(
+            f"UPDATE channels SET {', '.join(fields)} WHERE id = ?;",
+            tuple(parameters),
             confirm,
         )
-
-        confirm_delete: asyncio.Future[None] | None = await self.__execute(
-            "DELETE FROM permission_overwrites WHERE channel_id = ?;",
-            (channel.id,),
-            confirm,
-        )
-
-        for overwrite in channel.permission_overwrites.values():
-            confirm_overwrite: asyncio.Future[None] | None = await self.__execute(
-                """
-                    INSERT OR REPLACE INTO permission_overwrites
-                    (channel_id, target_id, type, allow, deny)
-                    VALUES (?, ?, ?, ?, ?);
-                """,
-                (
-                    channel.id,
-                    overwrite.id,
-                    int(overwrite.type),
-                    int(overwrite.allow),
-                    int(overwrite.deny),
-                ),
-                confirm,
-            )
-
-            if confirm:
-                futures.append(confirm_overwrite)
 
         if confirm:
-            futures.append(confirm_channel)
-            futures.append(confirm_delete)
-
-            return asyncio.gather(*futures, return_exceptions=True)
+            return future
 
         return None
 
     async def connect(self) -> None:
-        logger.debug(f"Connecting to SQLite database at {self._filepath}")
+        logger.debug("Connecting to SQLite database at %s", self._filepath)
 
         self._connection = await aiosqlite.connect(self._filepath)
 
@@ -439,16 +786,16 @@ class SQLiteBackend(Backend):
             with suppress(asyncio.CancelledError):
                 await self._writer
 
-        remaining: list[tuple[str, tuple[Any]]] = []
+        remaining: list[tuple[str, tuple[Any], asyncio.Future[None] | None]] = []
         while not self._queue.empty():
             remaining.append(await self._queue.get())
 
         if remaining:
-            async with self._connection.execute("BEGIN"):
-                for query in remaining:
-                    await self._connection.execute(*query)
-
-                await self._connection.commit()
+            await self._connection.execute("BEGIN")
+            for query in remaining:
+                sql, values, _ = query
+                await self._connection.execute(sql, values)
+            await self._connection.commit()
 
         await self._connection.close()
 
@@ -464,35 +811,80 @@ class SQLiteBackend(Backend):
                 INSERT OR REPLACE INTO guilds
                 (
                     id,
+                    icon_hash,
                     name,
-                    description,
-                    owner,
-                    created,
-                    icon,
-                    banner,
-                    nsfw,
-                    mfa,
-                    verification,
                     features,
-                    vanity,
-                    premium
+                    incidents_invites_disabled_until,
+                    incidents_dms_disabled_until,
+                    incidents_dm_spam_detected_at,
+                    incidents_raid_detected_at,
+                    application_id,
+                    afk_channel_id,
+                    afk_timeout,
+                    banner_hash,
+                    default_message_notifications,
+                    description,
+                    discovery_splash_hash,
+                    explicit_content_filter,
+                    is_widget_enabled,
+                    max_video_channel_users,
+                    mfa_level,
+                    owner_id,
+                    preferred_locale,
+                    premium_subscription_count,
+                    premium_tier,
+                    public_updates_channel_id,
+                    rules_channel_id,
+                    splash_hash,
+                    system_channel_flags,
+                    system_channel_id,
+                    vanity_url_code,
+                    verification_level,
+                    widget_channel_id,
+                    nsfw_level
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                );
             """,
             (
                 guild.id,
-                guild.name,
-                guild.description,
-                guild.owner_id,
-                guild.created_at.timestamp(),
                 guild.icon_hash,
-                guild.banner_hash,
-                int(guild.nsfw_level),
-                int(guild.mfa_level),
-                int(guild.verification_level),
+                guild.name,
                 ','.join(str(feature) for feature in guild.features) if guild.features else None,
-                guild.vanity_url_code,
+                guild.incidents.invites_disabled_until.astimezone(timezone.utc).timestamp()
+                if guild.incidents.invites_disabled_until else None,
+                guild.incidents.dms_disabled_until.astimezone(timezone.utc).timestamp()
+                if guild.incidents.dms_disabled_until else None,
+                guild.incidents.dm_spam_detected_at.astimezone(timezone.utc).timestamp()
+                if guild.incidents.dm_spam_detected_at else None,
+                guild.incidents.raid_detected_at.astimezone(timezone.utc).timestamp()
+                if guild.incidents.raid_detected_at else None,
+                guild.application_id,
+                guild.afk_channel_id,
+                guild.afk_timeout.total_seconds(),
+                guild.banner_hash,
+                int(guild.default_message_notifications),
+                guild.description,
+                guild.discovery_splash_hash,
+                int(guild.explicit_content_filter),
+                int(guild.is_widget_enabled) if guild.is_widget_enabled is not None else None,
+                guild.max_video_channel_users,
+                int(guild.mfa_level),
+                guild.owner_id,
+                str(guild.preferred_locale),
+                guild.premium_subscription_count,
                 int(guild.premium_tier),
+                guild.public_updates_channel_id,
+                guild.rules_channel_id,
+                guild.splash_hash,
+                int(guild.system_channel_flags),
+                guild.system_channel_id,
+                guild.vanity_url_code,
+                int(guild.verification_level),
+                guild.widget_channel_id,
+                int(guild.nsfw_level),
             ),
             confirm,
         )
@@ -526,29 +918,71 @@ class SQLiteBackend(Backend):
         future: asyncio.Future[None] | None = await self.__execute(
             """
                 UPDATE guilds SET
-                name = ?,
-                description = ?,
-                icon = ?,
-                banner = ?,
-                nsfw = ?,
-                mfa = ?,
-                verification = ?,
-                features = ?,
-                vanity = ?,
-                premium = ?
+                    icon_hash = ?,
+                    name = ?,
+                    features = ?,
+                    incidents_invites_disabled_until = ?,
+                    incidents_dms_disabled_until = ?,
+                    incidents_dm_spam_detected_at = ?,
+                    incidents_raid_detected_at = ?,
+                    afk_channel_id = ?,
+                    afk_timeout = ?,
+                    banner_hash = ?,
+                    default_message_notifications = ?,
+                    description = ?,
+                    discovery_splash_hash = ?,
+                    explicit_content_filter = ?,
+                    is_widget_enabled = ?,
+                    max_video_channel_users = ?,
+                    mfa_level = ?,
+                    preferred_locale = ?,
+                    premium_subscription_count = ?,
+                    premium_tier = ?,
+                    public_updates_channel_id = ?,
+                    rules_channel_id = ?,
+                    splash_hash = ?,
+                    system_channel_flags = ?,
+                    system_channel_id = ?,
+                    vanity_url_code = ?,
+                    verification_level = ?,
+                    widget_channel_id = ?,
+                    nsfw_level = ?
                 WHERE id = ?;
             """,
             (
-                guild.name,
-                guild.description,
                 guild.icon_hash,
-                guild.banner_hash,
-                int(guild.nsfw_level),
-                int(guild.mfa_level),
-                int(guild.verification_level),
+                guild.name,
                 ','.join(str(feature) for feature in guild.features) if guild.features else None,
-                guild.vanity_url_code,
+                guild.incidents.invites_disabled_until.astimezone(timezone.utc).timestamp()
+                if guild.incidents.invites_disabled_until else None,
+                guild.incidents.dms_disabled_until.astimezone(timezone.utc).timestamp()
+                if guild.incidents.dms_disabled_until else None,
+                guild.incidents.dm_spam_detected_at.astimezone(timezone.utc).timestamp()
+                if guild.incidents.dm_spam_detected_at else None,
+                guild.incidents.raid_detected_at.astimezone(timezone.utc).timestamp()
+                if guild.incidents.raid_detected_at else None,
+                guild.afk_channel_id,
+                guild.afk_timeout.total_seconds(),
+                guild.banner_hash,
+                int(guild.default_message_notifications),
+                guild.description,
+                guild.discovery_splash_hash,
+                int(guild.explicit_content_filter),
+                int(guild.is_widget_enabled) if guild.is_widget_enabled is not None else None,
+                guild.max_video_channel_users,
+                int(guild.mfa_level),
+                str(guild.preferred_locale),
+                guild.premium_subscription_count,
                 int(guild.premium_tier),
+                guild.public_updates_channel_id,
+                guild.rules_channel_id,
+                guild.splash_hash,
+                int(guild.system_channel_flags),
+                guild.system_channel_id,
+                guild.vanity_url_code,
+                int(guild.verification_level),
+                guild.widget_channel_id,
+                int(guild.nsfw_level),
 
                 guild.id,
             ),
@@ -560,464 +994,603 @@ class SQLiteBackend(Backend):
 
         return None
 
-    async def iter_channels( # noqa: PLR0912, PLR0915
+    async def iter_channels( # noqa: PLR0912
         self,
         query: ChannelQuery,
-    ) -> AsyncIterator[CachedChannel]:
+    ) -> AsyncIterator[hikari.GuildChannel]:
         await self._ready.wait()
 
         sql: str = "SELECT * FROM channels"
-        conditions: list[str] = []
-        params: list[object] = []
 
-        if query._category is not None:
-            conditions.append("category = ?")
-            params.append(query._category)
-
-        if query._channel_id is not None:
-            conditions.append("id = ?")
-            params.append(query._channel_id)
-
-        if query._created_after is not None:
-            conditions.append("created > ?")
-            params.append(query._created_after.timestamp())
-
-        if query._created_before is not None:
-            conditions.append("created < ?")
-            params.append(query._created_before.timestamp())
-
-        if query._guild_id is not None:
-            conditions.append("guild = ?")
-            params.append(query._guild_id)
-
-        if query._name is not None:
-            conditions.append("name = ?")
-            params.append(query._name)
-
-        if query._nsfw is not None:
-            conditions.append("nsfw = ?")
-            params.append(int(query._nsfw))
-
-        if query._position is not None:
-            conditions.append("position = ?")
-            params.append(query._position)
-
-        if query._topic is not None:
-            conditions.append("topic LIKE ?")
-            params.append(f"%{query._topic}%")
-
-        if query._type is not None:
-            conditions.append("type = ?")
-            params.append(int(query._type))
-
+        conditions, params = self.__build_query(query)
         if conditions:
             sql += " WHERE " + " AND ".join(conditions)
 
-        if query._limit is not None:
-            sql += " LIMIT ?"
-            params.append(query._limit)
-
         sql += ';'
-
-        batch: int = BATCH_SIZE_NORMAL
-        if query._limit is not None:
-            batch = min(batch, query._limit)
 
         async with self._connection.execute(sql, tuple(params)) as cursor:
             while True:
-                rows: Iterable[aiosqlite.Row] = await cursor.fetchmany(batch)
+                rows: Iterable[aiosqlite.Row] = await cursor.fetchmany(BATCH_SIZE_NORMAL)
+
                 if not rows:
                     break
 
                 for row in rows:
-                    async with self._connection.execute(
-                        "SELECT * FROM permission_overwrites WHERE channel_id = ?;",
-                        (row[0],),
-                    ) as pcursor:
-                        presult: Iterable[aiosqlite.Row] = await pcursor.fetchall()
+                    overwrites: dict[hikari.Snowflake, hikari.PermissionOverwrite] = {}
 
-                    overwrites: dict[hikari.Snowflake, hikari.PermissionOverwrite] = {
-                        r[1]: CachedPermissionOverwrite.from_sqlite(r) for r in presult
-                    }
-                    yield CachedChannel.from_sqlite(row, overwrites)
+                    if row[7]:
+                        for entry in row[7].split('|'):
+                            parts: list[str] = entry.split(':')
+                            id_: hikari.Snowflake = hikari.Snowflake(parts[0])
+                            overwrites[id_] = hikari.PermissionOverwrite(
+                                id=id_,
+                                type=hikari.PermissionOverwriteType(int(parts[1])),
+                                allow=hikari.Permissions(int(parts[2])),
+                                deny=hikari.Permissions(int(parts[3])),
+                            )
 
-    async def iter_guilds( # noqa: PLR0912, PLR0915
+                    channel_type: hikari.ChannelType = hikari.ChannelType(row[2])
+
+                    match channel_type:
+                        case hikari.ChannelType.GUILD_TEXT:
+                            yield hikari.GuildTextChannel(
+                                app=self._cache._bot,
+                                id=row[0],
+                                name=row[1],
+                                type=channel_type,
+                                guild_id=row[3],
+                                parent_id=row[4],
+                                position=row[5],
+                                is_nsfw=bool(row[6]),
+                                permission_overwrites=overwrites,
+                                topic=row[8],
+                                last_message_id=row[9],
+                                rate_limit_per_user=timedelta(seconds=row[10]),
+                                last_pin_timestamp=datetime.fromtimestamp(row[11], timezone.utc)
+                                if row[11] else None,
+                                default_auto_archive_duration=timedelta(seconds=row[12]),
+                            )
+                        case hikari.ChannelType.GUILD_VOICE:
+                            yield hikari.GuildVoiceChannel(
+                                app=self._cache._bot,
+                                id=row[0],
+                                name=row[1],
+                                type=channel_type,
+                                guild_id=row[3],
+                                parent_id=row[4],
+                                position=row[5],
+                                is_nsfw=bool(row[6]),
+                                permission_overwrites=overwrites,
+                                bitrate=row[13],
+                                region=row[14],
+                                user_limit=row[15],
+                                video_quality_mode=hikari.VideoQualityMode(row[16]),
+                                last_message_id=row[9],
+                            )
+                        case hikari.ChannelType.GUILD_CATEGORY:
+                            yield hikari.GuildCategory(
+                                app=self._cache._bot,
+                                id=row[0],
+                                name=row[1],
+                                type=channel_type,
+                                guild_id=row[3],
+                                parent_id=row[4],
+                                position=row[5],
+                                is_nsfw=bool(row[6]),
+                                permission_overwrites=overwrites,
+                            )
+                        case hikari.ChannelType.GUILD_NEWS:
+                            yield hikari.GuildNewsChannel(
+                                app=self._cache._bot,
+                                id=row[0],
+                                name=row[1],
+                                type=channel_type,
+                                guild_id=row[3],
+                                parent_id=row[4],
+                                position=row[5],
+                                is_nsfw=bool(row[6]),
+                                permission_overwrites=overwrites,
+                                topic=row[8],
+                                last_message_id=row[9],
+                                last_pin_timestamp=datetime.fromtimestamp(row[11], timezone.utc)
+                                if row[11] else None,
+                                default_auto_archive_duration=timedelta(seconds=row[12]),
+                            )
+                        case hikari.ChannelType.GUILD_NEWS_THREAD:
+                            yield hikari.GuildNewsThread(
+                                app=self._cache._bot,
+                                id=row[0],
+                                name=row[1],
+                                type=channel_type,
+                                guild_id=row[3],
+                                parent_id=row[4],
+                                last_message_id=row[9],
+                                last_pin_timestamp=datetime.fromtimestamp(row[11], timezone.utc)
+                                if row[11] else None,
+                                rate_limit_per_user=timedelta(seconds=row[10]),
+                                approximate_message_count=row[17],
+                                approximate_member_count=row[18],
+                                member=hikari.ThreadMember(
+                                    thread_id=row[19],
+                                    user_id=row[20],
+                                    joined_at=datetime.fromtimestamp(row[21], timezone.utc),
+                                    flags=row[22],
+                                ) if all((row[19], row[20], row[21], row[22])) else None,
+                                owner_id=row[23],
+                                metadata=hikari.ThreadMetadata(
+                                    is_archived=bool(row[24]),
+                                    is_invitable=bool(row[25]),
+                                    auto_archive_duration=timedelta(seconds=row[26]),
+                                    archive_timestamp=datetime.fromtimestamp(row[27], timezone.utc),
+                                    is_locked=bool(row[28]),
+                                    created_at=datetime.fromtimestamp(row[29], timezone.utc)
+                                    if row[29] else None,
+                                )
+                            )
+                        case hikari.ChannelType.GUILD_PUBLIC_THREAD:
+                            yield hikari.GuildPublicThread(
+                                app=self._cache._bot,
+                                id=row[0],
+                                name=row[1],
+                                type=channel_type,
+                                guild_id=row[3],
+                                parent_id=row[4],
+                                last_message_id=row[9],
+                                last_pin_timestamp=datetime.fromtimestamp(row[11], timezone.utc)
+                                if row[11] else None,
+                                rate_limit_per_user=timedelta(seconds=row[10]),
+                                approximate_message_count=row[17],
+                                approximate_member_count=row[18],
+                                member=hikari.ThreadMember(
+                                    thread_id=row[19],
+                                    user_id=row[20],
+                                    joined_at=datetime.fromtimestamp(row[21], timezone.utc),
+                                    flags=row[22],
+                                ) if all((row[19], row[20], row[21], row[22])) else None,
+                                owner_id=row[23],
+                                metadata=hikari.ThreadMetadata(
+                                    is_archived=bool(row[24]),
+                                    is_invitable=bool(row[25]),
+                                    auto_archive_duration=timedelta(seconds=row[26]),
+                                    archive_timestamp=datetime.fromtimestamp(row[27], timezone.utc),
+                                    is_locked=bool(row[28]),
+                                    created_at=datetime.fromtimestamp(row[29], timezone.utc)
+                                    if row[29] else None,
+                                ),
+                                applied_tag_ids=[
+                                    hikari.Snowflake(id_) for id_ in row[30].split(',')
+                                ] if row[30] else None,
+                                flags=hikari.ChannelFlag(row[31]),
+                            )
+                        case hikari.ChannelType.GUILD_PRIVATE_THREAD:
+                            yield hikari.GuildPrivateThread(
+                                app=self._cache._bot,
+                                id=row[0],
+                                name=row[1],
+                                type=channel_type,
+                                guild_id=row[3],
+                                parent_id=row[4],
+                                last_message_id=row[9],
+                                last_pin_timestamp=datetime.fromtimestamp(row[11], timezone.utc)
+                                if row[11] else None,
+                                rate_limit_per_user=timedelta(seconds=row[10]),
+                                approximate_message_count=row[17],
+                                approximate_member_count=row[18],
+                                member=hikari.ThreadMember(
+                                    thread_id=row[19],
+                                    user_id=row[20],
+                                    joined_at=datetime.fromtimestamp(row[21], timezone.utc),
+                                    flags=row[22],
+                                ) if all((row[19], row[20], row[21], row[22])) else None,
+                                owner_id=row[23],
+                                metadata=hikari.ThreadMetadata(
+                                    is_archived=bool(row[24]),
+                                    is_invitable=bool(row[25]),
+                                    auto_archive_duration=timedelta(seconds=row[26]),
+                                    archive_timestamp=datetime.fromtimestamp(row[27], timezone.utc),
+                                    is_locked=bool(row[28]),
+                                    created_at=datetime.fromtimestamp(row[29], timezone.utc)
+                                    if row[29] else None,
+                                )
+                            )
+                        case hikari.ChannelType.GUILD_STAGE:
+                            yield hikari.GuildStageChannel(
+                                app=self._cache._bot,
+                                id=row[0],
+                                name=row[1],
+                                type=channel_type,
+                                guild_id=row[3],
+                                parent_id=row[4],
+                                position=row[5],
+                                is_nsfw=bool(row[6]),
+                                permission_overwrites=overwrites,
+                                bitrate=row[13],
+                                region=row[14],
+                                user_limit=row[15],
+                                video_quality_mode=hikari.VideoQualityMode(row[16]),
+                                last_message_id=row[9],
+                            )
+                        case hikari.ChannelType.GUILD_FORUM:
+                            yield hikari.GuildForumChannel(
+                                app=self._cache._bot,
+                                id=row[0],
+                                name=row[1],
+                                type=channel_type,
+                                guild_id=row[3],
+                                parent_id=row[4],
+                                position=row[5],
+                                is_nsfw=bool(row[6]),
+                                permission_overwrites=overwrites,
+                                topic=row[8],
+                                last_thread_id=row[32],
+                                rate_limit_per_user=timedelta(seconds=row[10]),
+                                default_thread_rate_limit_per_user=timedelta(seconds=row[33]),
+                                default_auto_archive_duration=timedelta(seconds=row[12]),
+                                flags=hikari.ChannelFlag(row[31]),
+                                available_tags=[
+                                    hikari.ForumTag(
+                                        id=hikari.Snowflake(parts[0]),
+                                        name=parts[1],
+                                        moderated=bool(int(parts[2])),
+                                        emoji=(
+                                            hikari.Snowflake(parts[3])
+                                            if parts[3] != "-1" else None
+                                        ),
+                                    )
+                                    for entry in row[34].split('|')
+                                    for parts in (entry.split(':'),)
+                                ] if row[34] else [],
+                                default_sort_order=hikari.ForumSortOrderType(row[35]),
+                                default_layout=hikari.ForumLayoutType(row[36]),
+                                default_reaction_emoji_id=row[37],
+                                default_reaction_emoji_name=row[38],
+                            )
+                        case hikari.ChannelType.GUILD_MEDIA:
+                            yield hikari.GuildMediaChannel(
+                                app=self._cache._bot,
+                                id=row[0],
+                                name=row[1],
+                                type=channel_type,
+                                guild_id=row[3],
+                                parent_id=row[4],
+                                position=row[5],
+                                is_nsfw=bool(row[6]),
+                                permission_overwrites=overwrites,
+                                topic=row[8],
+                                last_thread_id=row[32],
+                                rate_limit_per_user=timedelta(seconds=row[10]),
+                                default_thread_rate_limit_per_user=timedelta(seconds=row[33]),
+                                default_auto_archive_duration=timedelta(seconds=row[12]),
+                                flags=hikari.ChannelFlag(row[31]),
+                                available_tags=[
+                                    hikari.ForumTag(
+                                        id=hikari.Snowflake(parts[0]),
+                                        name=parts[1],
+                                        moderated=bool(int(parts[2])),
+                                        emoji=(
+                                            hikari.Snowflake(parts[3])
+                                            if parts[3] != "-1" else None
+                                        ),
+                                    )
+                                    for entry in row[34].split('|')
+                                    for parts in (entry.split(':'),)
+                                ] if row[34] else [],
+                                default_sort_order=hikari.ForumSortOrderType(row[35]),
+                                default_layout=hikari.ForumLayoutType(row[36]),
+                                default_reaction_emoji_id=row[37],
+                                default_reaction_emoji_name=row[38],
+                            )
+
+    async def iter_guilds(
         self,
         query: GuildQuery,
-    ) -> AsyncIterator[CachedGuild]:
+    ) -> AsyncIterator[hikari.Guild]:
         await self._ready.wait()
 
         sql: str = "SELECT * FROM guilds"
-        conditions: list[str] = []
-        params: list[object] = []
 
-        if query._created_after is not None:
-            conditions.append("created > ?")
-            params.append(query._created_after.timestamp())
-
-        if query._created_before is not None:
-            conditions.append("created < ?")
-            params.append(query._created_before.timestamp())
-
-        if query._description is not None:
-            conditions.append("description LIKE ?")
-            params.append(f"%{query._description}%")
-
-        if query._guild_id is not None:
-            conditions.append("id = ?")
-            params.append(query._guild_id)
-
-        if query._name is not None:
-            conditions.append("name = ?")
-            params.append(query._name)
-
-        if query._nsfw is not None:
-            conditions.append("nsfw = ?")
-            params.append(int(query._nsfw))
-
-        if query._mfa is not None:
-            conditions.append("mfa = ?")
-            params.append(int(query._mfa))
-
-        if query._owner_id is not None:
-            conditions.append("owner = ?")
-            params.append(query._owner_id)
-
-        if query._premium is not None:
-            conditions.append("premium = ?")
-            params.append(int(query._premium))
-
-        if query._vanity is not None:
-            conditions.append("vanity = ?")
-            params.append(query._vanity)
-
-        if query._verification is not None:
-            conditions.append("verification = ?")
-            params.append(int(query._verification))
-
+        conditions, params = self.__build_query(query)
         if conditions:
             sql += " WHERE " + " AND ".join(conditions)
 
-        if query._limit is not None:
-            sql += " LIMIT ?"
-            params.append(query._limit)
-
         sql += ';'
-
-        batch: int = BATCH_SIZE_NORMAL
-        if query._limit is not None:
-            batch = min(batch, query._limit)
 
         async with self._connection.execute(sql, tuple(params)) as cursor:
             while True:
-                rows: Iterable[aiosqlite.Row] = await cursor.fetchmany(batch)
+                rows: Iterable[aiosqlite.Row] = await cursor.fetchmany(BATCH_SIZE_NORMAL)
+
                 if not rows:
                     break
 
                 for row in rows:
-                    yield CachedGuild.from_sqlite(row)
+                    yield hikari.Guild(
+                        app=self._cache._bot,
+                        id=row[0],
+                        icon_hash=row[1],
+                        name=row[2],
+                        features=[
+                            hikari.GuildFeature(feature) for feature in row[3].split(',')
+                        ] if row[3] else None,
+                        incidents=hikari.GuildIncidents(
+                            invites_disabled_until=datetime.fromtimestamp(row[4], timezone.utc)
+                            if row[4] else None,
+                            dms_disabled_until=datetime.fromtimestamp(row[5], timezone.utc)
+                            if row[5] else None,
+                            dm_spam_detected_at=datetime.fromtimestamp(row[6], timezone.utc)
+                            if row[6] else None,
+                            raid_detected_at=datetime.fromtimestamp(row[7], timezone.utc)
+                            if row[7] else None,
+                        ),
+                        application_id=row[8],
+                        afk_channel_id=row[9],
+                        afk_timeout=timedelta(seconds=row[10]),
+                        banner_hash=row[11],
+                        default_message_notifications=hikari.GuildMessageNotificationsLevel(row[12]),
+                        description=row[13],
+                        discovery_splash_hash=row[14],
+                        explicit_content_filter=hikari.GuildExplicitContentFilterLevel(row[15]),
+                        is_widget_enabled=bool(row[16]) if row[16] is not None else None,
+                        max_video_channel_users=row[17],
+                        mfa_level=hikari.GuildMFALevel(row[18]),
+                        owner_id=row[19],
+                        preferred_locale=hikari.Locale(row[20]),
+                        premium_subscription_count=row[21],
+                        premium_tier=hikari.GuildPremiumTier(row[22]),
+                        public_updates_channel_id=row[23],
+                        rules_channel_id=row[24],
+                        splash_hash=row[25],
+                        system_channel_flags=hikari.GuildSystemChannelFlag(row[26]),
+                        system_channel_id=row[27],
+                        vanity_url_code=row[28],
+                        verification_level=hikari.GuildVerificationLevel(row[29]),
+                        widget_channel_id=row[30],
+                        nsfw_level=hikari.GuildNSFWLevel(row[31]),
+                    )
 
-    async def iter_members( # noqa: PLR0912, PLR0915
+    async def iter_members(
         self,
         query: MemberQuery,
-    ) -> AsyncIterator[CachedMember]:
+    ) -> AsyncIterator[hikari.Member]:
         await self._ready.wait()
 
         sql: str = "SELECT * FROM members"
-        conditions: list[str] = []
-        params: list[object] = []
 
-        if query._boosting_after is not None:
-            conditions.append("premium_since > ?")
-            params.append(query._boosting_after.timestamp())
-
-        if query._boosting_before is not None:
-            conditions.append("premium_since < ?")
-            params.append(query._boosting_before.timestamp())
-
-        if query._bot is not None:
-            conditions.append("bot = ?")
-            params.append(int(query._bot))
-
-        if query._discriminator is not None:
-            conditions.append("discriminator = ?")
-            params.append(query._discriminator)
-
-        if query._created_after is not None:
-            conditions.append("created > ?")
-            params.append(query._created_after.timestamp())
-
-        if query._created_before is not None:
-            conditions.append("created < ?")
-            params.append(query._created_before.timestamp())
-
-        if query._flags is not None:
-            conditions.append("flags = ?")
-            params.append(int(query._flags))
-
-        if query._guild_id is not None:
-            conditions.append("guild = ?")
-            params.append(query._guild_id)
-
-        if query._joined_after is not None:
-            conditions.append("joined > ?")
-            params.append(query._joined_after.timestamp())
-
-        if query._joined_before is not None:
-            conditions.append("joined < ?")
-            params.append(query._joined_before.timestamp())
-
-        if query._member_id is not None:
-            conditions.append("id = ?")
-            params.append(query._member_id)
-
-        if query._name is not None:
-            conditions.append("name = ?")
-            params.append(query._name)
-
-        if query._system is not None:
-            conditions.append("system = ?")
-            params.append(int(query._system))
-
-        if query._timed_out is not None:
-            if query._timed_out:
-                conditions.append("timeout IS NOT NULL")
-            else:
-                conditions.append("timeout IS NULL")
-
-        if query._username is not None:
-            conditions.append("username = ?")
-            params.append(query._username)
-
+        conditions, params = self.__build_query(query)
         if conditions:
             sql += " WHERE " + " AND ".join(conditions)
 
-        if query._limit is not None:
-            sql += " LIMIT ?"
-            params.append(query._limit)
-
         sql += ';'
-
-        batch: int = BATCH_SIZE_NORMAL
-        if query._limit is not None:
-            batch = min(batch, query._limit)
 
         async with self._connection.execute(sql, tuple(params)) as cursor:
             while True:
-                rows: Iterable[aiosqlite.Row] = await cursor.fetchmany(batch)
-                if not rows:
+                members: Iterable[aiosqlite.Row] = await cursor.fetchmany(BATCH_SIZE_NORMAL)
+
+                if not members:
                     break
 
-                for row in rows:
-                    yield CachedMember.from_sqlite(row)
+                async with self._connection.execute(
+                    f"SELECT * FROM users WHERE id IN ({','.join('?' * len(members))});",
+                    tuple(member[0] for member in members),
+                ) as ucursor:
+                    user_rows: Iterable[aiosqlite.Row] = await ucursor.fetchall()
 
-    async def iter_messages( # noqa: PLR0912, PLR0915
-        self,
-        query: MessageQuery,
-    ) -> AsyncIterator[CachedMessage]:
-        await self._ready.wait()
+                users_by_id: dict[hikari.Snowflake, aiosqlite.Row] = {
+                    row[0]: row for row in user_rows
+                }
 
-        sql: str = ''
-        conditions: list[str] = []
-        params: list[object] = []
+                for member in members:
+                    user_row: aiosqlite.Row = users_by_id.get(member[0])
 
-        if query._contains is not None:
-            sql = (
-                "SELECT messages.* FROM messages "
-                "JOIN message_fts ON messages.id = message_fts.rowid"
-            )
-            conditions.append("message_fts MATCH ?")
-            params.append(query._contains)
-        else:
-            sql = "SELECT * FROM messages"
+                    if not user_row:
+                        logger.warning(
+                            "Member has no cached user object, discarding; ID=%s",
+                            member[0],
+                        )
+                        continue
 
-        if query._author_id is not None:
-            conditions.append("author = ?")
-            params.append(query._author_id)
+                    yield hikari.Member(
+                        guild_id=member[1],
+                        is_deaf=hikari.UNDEFINED,
+                        is_mute=hikari.UNDEFINED,
+                        is_pending=hikari.UNDEFINED,
+                        joined_at=datetime.fromtimestamp(member[2], timezone.utc),
+                        nickname=member[3],
+                        premium_since=datetime.fromtimestamp(member[4], timezone.utc)
+                        if member[4] else None,
+                        raw_communication_disabled_until=datetime.fromtimestamp(
+                            member[5], timezone.utc
+                        ) if member[5] else None,
+                        role_ids=[
+                            hikari.Snowflake(id_) for id_ in member[6].split(',')
+                        ] if member[6] else [],
+                        user=users.UserImpl(
+                            id=user_row[0],
+                            app=self._cache._bot,
+                            discriminator=user_row[1],
+                            username=user_row[2],
+                            global_name=user_row[3],
+                            avatar_decoration=users.AvatarDecoration(
+                                asset_hash=user_row[4],
+                                sku_id=user_row[5],
+                                expires_at=datetime.fromtimestamp(user_row[6], timezone.utc)
+                                if user_row[6] else None,
+                            ) if user_row[4] and user_row[5] else None,
+                            avatar_hash=user_row[7],
+                            banner_hash=user_row[8],
+                            accent_color=hikari.Color(
+                                user_row[9]
+                            ) if user_row[9] is not None else None,
+                            is_bot=bool(user_row[10]),
+                            is_system=bool(user_row[11]),
+                            flags=hikari.UserFlag(user_row[12]),
+                            primary_guild=hikari.PrimaryGuild(
+                                identity_guild_id=user_row[13],
+                                identity_enabled=bool(user_row[14]) if user_row[14] else None,
+                                tag=user_row[15],
+                                badge_hash=user_row[16],
+                            ) if any(
+                                (user_row[13], user_row[14], user_row[15], user_row[16])
+                            ) else None,
+                        ),
+                        guild_avatar_decoration=users.AvatarDecoration(
+                            asset_hash=member[7],
+                            sku_id=member[8],
+                            expires_at=datetime.fromtimestamp(member[9], timezone.utc)
+                            if member[9] else None,
+                        ) if member[7] and member[8] else None,
+                        guild_avatar_hash=member[10],
+                        guild_banner_hash=member[11],
+                        guild_flags=hikari.GuildMemberFlags(member[12]),
+                    )
 
-        if query._channel_id is not None:
-            conditions.append("channel = ?")
-            params.append(query._channel_id)
-
-        if query._created_after is not None:
-            conditions.append("created > ?")
-            params.append(query._created_after.timestamp())
-
-        if query._created_before is not None:
-            conditions.append("created < ?")
-            params.append(query._created_before.timestamp())
-
-        if query._edited_after is not None:
-            conditions.append("edited > ?")
-            params.append(query._edited_after.timestamp())
-
-        if query._edited_before is not None:
-            conditions.append("edited < ?")
-            params.append(query._edited_before.timestamp())
-
-        if query._guild_id is not None:
-            conditions.append("guild = ?")
-            params.append(query._guild_id)
-
-        if query._message_id is not None:
-            conditions.append("id = ?")
-            params.append(query._message_id)
-
-        if query._pinned is not None:
-            conditions.append("pinned = ?")
-            params.append(int(query._pinned))
-
-        if conditions:
-            sql += " WHERE " + " AND ".join(conditions)
-
-        if query._limit is not None:
-            sql += " LIMIT ?"
-            params.append(query._limit)
-
-        sql += ';'
-
-        batch: int = BATCH_SIZE_NORMAL
-        if query._limit is not None:
-            batch = min(batch, query._limit)
-
-        async with self._connection.execute(sql, tuple(params)) as cursor:
-            while True:
-                rows: Iterable[aiosqlite.Row] = await cursor.fetchmany(batch)
-                if not rows:
-                    break
-
-                for row in rows:
-                    yield CachedMessage.from_sqlite(row)
-
-    async def iter_roles( # noqa: PLR0912, PLR0915
+    async def iter_roles(
         self,
         query: RoleQuery,
-    ) -> AsyncIterator[CachedRole]:
+    ) -> AsyncIterator[hikari.Role]:
         await self._ready.wait()
 
         sql: str = "SELECT * FROM roles"
-        conditions: list[str] = []
-        params: list[object] = []
 
-        if query._color is not None:
-            conditions.append("color = ?")
-            params.append(int(query._color))
-
-        if query._created_after is not None:
-            conditions.append("created > ?")
-            params.append(query._created_after.timestamp())
-
-        if query._created_before is not None:
-            conditions.append("created < ?")
-            params.append(query._created_before.timestamp())
-
-        if query._guild_id is not None:
-            conditions.append("guild = ?")
-            params.append(query._guild_id)
-
-        if query._hoisted is not None:
-            conditions.append("hoisted = ?")
-            params.append(int(query._hoisted))
-
-        if query._managed is not None:
-            if query._managed:
-                conditions.append("bot IS NOT NULL")
-            else:
-                conditions.append("bot IS NULL")
-
-        if query._name is not None:
-            conditions.append("name = ?")
-            params.append(query._name)
-
-        if query._permissions is not None:
-            conditions.append("permissions = ?")
-            params.append(int(query._permissions))
-
-        if query._position is not None:
-            conditions.append("position = ?")
-            params.append(query._position)
-
-        if query._premium is not None:
-            conditions.append("premium = ?")
-            params.append(int(query._premium))
-
-        if query._role_id is not None:
-            conditions.append("id = ?")
-            params.append(query._role_id)
-
+        conditions, params = self.__build_query(query)
         if conditions:
             sql += " WHERE " + " AND ".join(conditions)
 
-        if query._limit is not None:
-            sql += " LIMIT ?"
-            params.append(query._limit)
-
         sql += ';'
-
-        batch: int = BATCH_SIZE_NORMAL
-        if query._limit is not None:
-            batch = min(batch, query._limit)
 
         async with self._connection.execute(sql, tuple(params)) as cursor:
             while True:
-                rows: Iterable[aiosqlite.Row] = await cursor.fetchmany(batch)
+                rows: Iterable[aiosqlite.Row] = await cursor.fetchmany(BATCH_SIZE_NORMAL)
+
                 if not rows:
                     break
 
                 for row in rows:
-                    yield CachedRole.from_sqlite(row)
+                    yield hikari.Role(
+                        app=self._cache._bot,
+                        id=row[0],
+                        name=row[1],
+                        color=hikari.Color(row[2]),
+                        guild_id=row[3],
+                        is_hoisted=bool(row[4]),
+                        icon_hash=row[5],
+                        unicode_emoji=hikari.UnicodeEmoji(row[6]) if row[6] else None,
+                        is_managed=bool(row[7]),
+                        is_mentionable=bool(row[8]),
+                        permissions=hikari.Permissions(row[9]),
+                        position=row[10],
+                        bot_id=row[11],
+                        integration_id=row[12],
+                        is_premium_subscriber_role=bool(row[13]),
+                        subscription_listing_id=row[14],
+                        is_available_for_purchase=bool(row[15]),
+                        is_guild_linked_role=bool(row[16]),
+                    )
 
     async def member_create(
         self,
         member: hikari.Member,
         confirm: bool,
     ) -> asyncio.Future[None] | None:
-        comm_disabled = member.communication_disabled_until()
+        comm_disabled: datetime | None = member.raw_communication_disabled_until
 
-        future: asyncio.Future[None] | None = await self.__execute(
+        mfuture: asyncio.Future[None] | None = await self.__execute(
             """
                 INSERT OR REPLACE INTO members
                 (
                     id,
-                    guild,
-                    username,
-                    discriminator,
-                    created,
-                    joined,
-                    avatar,
-                    banner,
-                    name,
-                    flags,
-                    bot,
-                    system,
-                    roles,
+                    guild_id,
+                    joined_at,
+                    nickname,
                     premium_since,
-                    timeout
+                    raw_communication_disabled_until,
+                    role_ids,
+                    guild_avatar_decoration_asset_hash,
+                    guild_avatar_decoration_sku_id,
+                    guild_avatar_decoration_expires_at,
+                    guild_avatar_hash,
+                    guild_banner_hash,
+                    guild_flags
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             (
                 member.id,
                 member.guild_id,
-                member.username,
+                member.joined_at.astimezone(timezone.utc).timestamp(),
+                member.nickname,
+                member.premium_since.astimezone(timezone.utc).timestamp()
+                if member.premium_since else None,
+                comm_disabled.astimezone(timezone.utc).timestamp()
+                if comm_disabled else None,
+                ','.join(str(role_id) for role_id in member.role_ids) if member.role_ids else None,
+                member.guild_avatar_decoration.asset_hash
+                if member.guild_avatar_decoration else None,
+                member.guild_avatar_decoration.sku_id
+                if member.guild_avatar_decoration else None,
+                member.guild_avatar_decoration.expires_at.astimezone(timezone.utc).timestamp()
+                if (
+                    member.guild_avatar_decoration and
+                    member.guild_avatar_decoration.expires_at)
+                else None,
+                member.guild_avatar_hash,
+                member.guild_banner_hash,
+                int(member.guild_flags),
+            ),
+            confirm,
+        )
+        ufuture: asyncio.Future[None] | None = await self.__execute(
+            """
+                INSERT OR REPLACE INTO users
+                (
+                    id,
+                    discriminator,
+                    username,
+                    global_name,
+                    avatar_decoration_asset_hash,
+                    avatar_decoration_sku_id,
+                    avatar_decoration_expires_at,
+                    avatar_hash,
+                    banner_hash,
+                    accent_color,
+                    is_bot,
+                    is_system,
+                    flags,
+                    primary_guild_identity_guild_id,
+                    primary_guild_identity_enabled,
+                    primary_guild_tag,
+                    primary_guild_badge_hash
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            (
+                member.id,
                 member.discriminator,
-                member.created_at.timestamp(),
-                member.joined_at.timestamp(),
-                str(member.display_avatar_url),
-                str(member.display_banner_url) if member.display_banner_url else None,
-                member.display_name,
-                int(member.flags),
+                member.username,
+                member.global_name,
+                member.avatar_decoration.asset_hash if member.avatar_decoration else None,
+                member.avatar_decoration.sku_id if member.avatar_decoration else None,
+                member.avatar_decoration.expires_at.astimezone(timezone.utc).timestamp()
+                if member.avatar_decoration and member.avatar_decoration.expires_at else None,
+                member.avatar_hash,
+                member.banner_hash,
+                int(member.accent_color) if member.accent_color is not None else None,
                 int(member.is_bot),
                 int(member.is_system),
-                ','.join(str(role) for role in member.role_ids) if member.role_ids else None,
-                member.premium_since.timestamp() if member.premium_since else None,
-                comm_disabled.timestamp() if comm_disabled else None,
+                int(member.flags),
+                member.primary_guild.identity_guild_id
+                if member.primary_guild else None,
+                int(member.primary_guild.identity_enabled)
+                if member.primary_guild else None,
+                member.primary_guild.tag
+                if member.primary_guild else None,
+                member.primary_guild.badge_hash
+                if member.primary_guild else None,
             ),
             confirm,
         )
 
         if confirm:
-            return future
+            return asyncio.gather(mfuture, ufuture, return_exceptions=True)
 
         return None
 
@@ -1027,14 +1600,38 @@ class SQLiteBackend(Backend):
         guild_id: hikari.Snowflake,
         confirm: bool,
     ) -> asyncio.Future[None] | None:
-        future: asyncio.Future[None] | None = await self.__execute(
-            "DELETE FROM members WHERE id = ? AND guild = ?;",
+        async with self._connection.execute(
+            "SELECT guild_id FROM members WHERE id = ?;",
+            (user_id,),
+        ) as cursor:
+            rows: Iterable[aiosqlite.Row] = await cursor.fetchall()
+
+        used: bool = False
+        for row in rows:
+            if row[0] == guild_id:
+                continue
+
+            used = True
+            break
+
+        mfuture: asyncio.Future[None] | None = await self.__execute(
+            "DELETE FROM members WHERE id = ? AND guild_id = ?;",
             (user_id, guild_id,),
             confirm,
         )
 
+        if not used:
+            ufuture: asyncio.Future[None] | None = await self.__execute(
+                "DELETE FROM users WHERE id = ?;",
+                (user_id,),
+                confirm,
+            )
+
         if confirm:
-            return future
+            if not used:
+                return asyncio.gather(mfuture, ufuture, return_exceptions=True)
+
+            return mfuture
 
         return None
 
@@ -1043,152 +1640,95 @@ class SQLiteBackend(Backend):
         member: hikari.Member,
         confirm: bool,
     ) -> asyncio.Future[None] | None:
-        comms_disabled = member.communication_disabled_until()
+        comm_disabled: datetime | None = member.communication_disabled_until()
 
-        future: asyncio.Future[None] = await self.__execute(
+        mfuture: asyncio.Future[None] = await self.__execute(
             """
                 UPDATE members SET
-                username = ?,
-                discriminator = ?,
-                avatar = ?,
-                banner = ?,
-                name = ?,
-                flags = ?,
-                roles = ?,
-                premium_since = ?,
-                timeout = ?
-                WHERE id = ? AND guild = ?;
+                    nickname = ?,
+                    premium_since = ?,
+                    raw_communication_disabled_until = ?,
+                    role_ids = ?,
+                    guild_avatar_decoration_asset_hash = ?,
+                    guild_avatar_decoration_sku_id = ?,
+                    guild_avatar_decoration_expires_at = ?,
+                    guild_avatar_hash = ?,
+                    guild_banner_hash = ?,
+                    guild_flags = ?
+                WHERE id = ? AND guild_id = ?;
             """,
             (
-                member.username,
-                member.discriminator,
-                str(member.display_avatar_url),
-                str(member.display_banner_url) if member.display_banner_url else None,
-                member.display_name,
-                int(member.flags),
-                ','.join(str(role) for role in member.role_ids) if member.role_ids else None,
-                member.premium_since.timestamp() if member.premium_since else None,
-                comms_disabled.timestamp() if comms_disabled else None,
+                member.nickname,
+                member.premium_since.astimezone(timezone.utc).timestamp()
+                if member.premium_since else None,
+                comm_disabled.astimezone(timezone.utc).timestamp()
+                if comm_disabled else None,
+                ','.join(str(role_id) for role_id in member.role_ids) if member.role_ids else None,
+                member.guild_avatar_decoration.asset_hash
+                if member.guild_avatar_decoration else None,
+                member.guild_avatar_decoration.sku_id
+                if member.guild_avatar_decoration else None,
+                member.guild_avatar_decoration.expires_at.astimezone(timezone.utc).timestamp()
+                if (
+                    member.guild_avatar_decoration and
+                    member.guild_avatar_decoration.expires_at)
+                else None,
+                member.guild_avatar_hash,
+                member.guild_banner_hash,
+                int(member.guild_flags),
 
                 member.id,
                 member.guild_id,
             ),
             confirm,
         )
-
-        if confirm:
-            return future
-
-        return None
-
-    async def message_create(
-        self,
-        message: hikari.Message,
-        confirm: bool,
-    ) -> asyncio.Future[None] | None:
-        future: asyncio.Future[None] | None = await self.__execute(
+        ufuture: asyncio.Future[None] | None = await self.__execute(
             """
-                INSERT OR REPLACE INTO messages (
-                    id,
-                    channel,
-                    guild,
-                    author,
-                    created,
-                    pinned,
-                    content,
-                    edited
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+                UPDATE users SET
+                    discriminator = ?,
+                    username = ?,
+                    global_name = ?,
+                    avatar_decoration_asset_hash = ?,
+                    avatar_decoration_sku_id = ?,
+                    avatar_decoration_expires_at = ?,
+                    avatar_hash = ?,
+                    banner_hash = ?,
+                    accent_color = ?,
+                    flags = ?,
+                    primary_guild_identity_guild_id = ?,
+                    primary_guild_identity_enabled = ?,
+                    primary_guild_tag = ?,
+                    primary_guild_badge_hash = ?
+                WHERE id = ?;
             """,
             (
-                message.id,
-                message.channel_id,
-                message.guild_id,
-                message.author.id,
-                message.created_at.timestamp(),
-                int(message.is_pinned),
-                message.content,
-                message.edited_timestamp.timestamp() if message.edited_timestamp else None,
+                member.discriminator,
+                member.username,
+                member.global_name,
+                member.avatar_decoration.asset_hash if member.avatar_decoration else None,
+                member.avatar_decoration.sku_id if member.avatar_decoration else None,
+                member.avatar_decoration.expires_at.astimezone(timezone.utc).timestamp()
+                if member.avatar_decoration and member.avatar_decoration.expires_at else None,
+                member.avatar_hash,
+                member.banner_hash,
+                int(member.accent_color) if member.accent_color is not None else None,
+                int(member.flags),
+                member.primary_guild.identity_guild_id
+                if member.primary_guild else None,
+                int(member.primary_guild.identity_enabled)
+                if member.primary_guild else None,
+                member.primary_guild.tag
+                if member.primary_guild else None,
+                member.primary_guild.badge_hash
+                if member.primary_guild else None,
+
+                member.id,
             ),
             confirm,
         )
 
-        await self.__execute(
-            "INSERT INTO message_fts(rowid, content) VALUES (?, ?);",
-            (message.id, message.content,),
-            False,
-        )
-
         if confirm:
-            return future
-
-        return None
-
-    async def message_delete(
-        self,
-        message_id: hikari.Snowflake,
-        channel_id: hikari.Snowflake,
-        confirm: bool,
-    ) -> asyncio.Future[None] | None:
-        future: asyncio.Future[None] | None = await self.__execute(
-            "DELETE FROM messages WHERE id = ? AND channel = ?;",
-            (message_id, channel_id,),
-            confirm,
-        )
-
-        await self.__execute(
-            "DELETE FROM message_fts WHERE rowid = ?;",
-            (message_id,),
-            False,
-        )
-
-        if confirm:
-            return future
-
-        return None
-
-    async def message_update(
-        self,
-        message: hikari.PartialMessage,
-        confirm: bool,
-    ) -> asyncio.Future[None] | None:
-        fields: list[str] = []
-        values: list[object] = []
-
-        if message.is_pinned is not hikari.UNDEFINED:
-            fields.append("pinned = ?")
-            values.append(message.is_pinned)
-
-        if message.content is not hikari.UNDEFINED:
-            fields.append("content = ?")
-            values.append(message.content)
-
-        if message.edited_timestamp is not hikari.UNDEFINED:
-            fields.append("edited = ?")
-            values.append(
-                message.edited_timestamp.timestamp()
-                if message.edited_timestamp else None
-            )
-
-        if not fields:
-            return None
-
-        values.extend((message.id, message.channel_id))
-
-        future: asyncio.Future[None] | None = await self.__execute(
-            f"UPDATE messages SET {', '.join(fields)} WHERE id = ? AND channel = ?;",
-            tuple(values),
-            confirm,
-        )
-
-        await self.__execute(
-            "INSERT OR REPLACE INTO message_fts(rowid, content) VALUES (?, ?);",
-            (message.id, message.content,),
-            False,
-        )
-
-        if confirm:
-            return future
+            return asyncio.gather(mfuture, ufuture, return_exceptions=True)
 
         return None
 
@@ -1202,31 +1742,43 @@ class SQLiteBackend(Backend):
                 INSERT OR REPLACE INTO roles
                 (
                     id,
-                    guild,
                     name,
                     color,
-                    icon,
+                    guild_id,
+                    is_hoisted,
+                    icon_hash,
+                    unicode_emoji,
+                    is_managed,
+                    is_mentionable,
                     permissions,
-                    created,
                     position,
-                    hoisted,
-                    bot,
-                    premium
+                    bot_id,
+                    integration_id,
+                    is_premium_subscriber_role,
+                    subscription_listing_id,
+                    is_available_for_purchase,
+                    is_guild_linked_role
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             (
                 role.id,
-                role.guild_id,
                 role.name,
                 int(role.color),
-                role.icon_hash,
-                int(role.permissions),
-                role.created_at.timestamp(),
-                role.position,
+                role.guild_id,
                 int(role.is_hoisted),
-                int(role.bot_id) if role.bot_id is not None else None,
+                role.icon_hash,
+                str(role.unicode_emoji) if role.unicode_emoji else None,
+                int(role.is_managed),
+                int(role.is_mentionable),
+                int(role.permissions),
+                role.position,
+                role.bot_id,
+                role.integration_id,
                 int(role.is_premium_subscriber_role),
+                role.subscription_listing_id,
+                int(role.is_available_for_purchase),
+                int(role.is_guild_linked_role),
             ),
             confirm,
         )
@@ -1262,19 +1814,29 @@ class SQLiteBackend(Backend):
             UPDATE roles SET
                 name = ?,
                 color = ?,
-                icon = ?,
+                is_hoisted = ?,
+                icon_hash = ?,
+                unicode_emoji = ?,
+                is_mentionable = ?,
                 permissions = ?,
                 position = ?,
-                hoisted = ?
+                subscription_listing_id = ?,
+                is_available_for_purchase = ?,
+                is_guild_linked_role = ?
             WHERE id = ?;
             """,
             (
                 role.name,
                 int(role.color),
+                int(role.is_hoisted),
                 role.icon_hash,
+                str(role.unicode_emoji) if role.unicode_emoji else None,
+                int(role.is_mentionable),
                 int(role.permissions),
                 role.position,
-                int(role.is_hoisted),
+                role.subscription_listing_id,
+                int(role.is_available_for_purchase),
+                int(role.is_guild_linked_role),
 
                 role.id,
             ),
@@ -1291,43 +1853,7 @@ class SQLiteBackend(Backend):
         guild: hikari.GatewayGuild,
         confirm: bool,
     ) -> asyncio.Future[None] | None:
-        future: asyncio.Future[None] | None = await self.__execute(
-            """
-                INSERT OR REPLACE INTO guilds
-                (
-                    id,
-                    name,
-                    description,
-                    owner,
-                    created,
-                    icon,
-                    banner,
-                    nsfw,
-                    mfa,
-                    verification,
-                    features,
-                    vanity,
-                    premium
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-            """,
-            (
-                guild.id,
-                guild.name,
-                guild.description,
-                guild.owner_id,
-                guild.created_at.timestamp(),
-                guild.icon_hash,
-                guild.banner_hash,
-                int(guild.nsfw_level),
-                int(guild.mfa_level),
-                int(guild.verification_level),
-                ','.join(str(feature) for feature in guild.features) if guild.features else None,
-                guild.vanity_url_code,
-                int(guild.premium_tier),
-            ),
-            confirm,
-        )
+        future: asyncio.Future[None] | None = await self.guild_join(guild, confirm)
 
         if confirm:
             return future
@@ -1336,54 +1862,16 @@ class SQLiteBackend(Backend):
 
     async def startup_guild_channels(
         self,
-        channels: Iterable[hikari.PermissibleGuildChannel],
+        channels: Iterable[hikari.GuildChannel],
         confirm: bool,
     ) -> asyncio.Future[None] | None:
         futures: list[asyncio.Future[None]] | None = []
 
         for channel in channels:
-            future: asyncio.Future[None] | None = await self.__execute(
-                """
-                    INSERT OR REPLACE INTO channels
-                    (id, guild, category, type, created, name, nsfw, position, topic)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
-                """,
-                (
-                    channel.id,
-                    channel.guild_id,
-                    channel.parent_id,
-                    int(channel.type),
-                    channel.created_at.timestamp(),
-                    channel.name,
-                    int(channel.is_nsfw),
-                    channel.position,
-                    getattr(channel, "topic", None),
-                ),
-                confirm,
-            )
+            future: asyncio.Future[None] | None = await self.channel_create(channel, confirm)
 
             if confirm:
                 futures.append(future)
-
-            for overwrite in channel.permission_overwrites.values():
-                future = await self.__execute(
-                    """
-                        INSERT OR REPLACE INTO permission_overwrites
-                        (channel_id, target_id, type, allow, deny)
-                        VALUES (?, ?, ?, ?, ?);
-                    """,
-                    (
-                        channel.id,
-                        overwrite.id,
-                        int(overwrite.type),
-                        int(overwrite.allow),
-                        int(overwrite.deny),
-                    ),
-                    confirm,
-                )
-
-                if confirm:
-                    futures.append(future)
 
         if not futures:
             return None
@@ -1398,49 +1886,7 @@ class SQLiteBackend(Backend):
         futures: list[asyncio.Future[None]] = []
 
         for member in members:
-            comm_disabled = member.communication_disabled_until()
-
-            future: asyncio.Future[None] | None = await self.__execute(
-                """
-                    INSERT OR REPLACE INTO members
-                    (
-                        id,
-                        guild,
-                        username,
-                        discriminator,
-                        created,
-                        joined,
-                        avatar,
-                        banner,
-                        name,
-                        flags,
-                        bot,
-                        system,
-                        roles,
-                        premium_since,
-                        timeout
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                """,
-                (
-                    member.id,
-                    member.guild_id,
-                    member.username,
-                    member.discriminator,
-                    member.created_at.timestamp(),
-                    member.joined_at.timestamp(),
-                    str(member.display_avatar_url),
-                    str(member.display_banner_url) if member.display_banner_url else None,
-                    member.display_name,
-                    int(member.flags),
-                    int(member.is_bot),
-                    int(member.is_system),
-                    ','.join(str(role) for role in member.role_ids) if member.role_ids else None,
-                    member.premium_since.timestamp() if member.premium_since else None,
-                    comm_disabled.timestamp() if comm_disabled else None,
-                ),
-                confirm,
-            )
+            future: asyncio.Future[None] | None = await self.member_create(member, confirm)
 
             if confirm:
                 futures.append(future)
@@ -1458,39 +1904,7 @@ class SQLiteBackend(Backend):
         futures: list[asyncio.Future[None]] = []
 
         for role in roles:
-            future: asyncio.Future[None] | None = await self.__execute(
-                """
-                    INSERT OR REPLACE INTO roles
-                    (
-                        id,
-                        guild,
-                        name,
-                        color,
-                        icon,
-                        permissions,
-                        created,
-                        position,
-                        hoisted,
-                        bot,
-                        premium
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                """,
-                (
-                    role.id,
-                    role.guild_id,
-                    role.name,
-                    int(role.color),
-                    role.icon_hash,
-                    int(role.permissions),
-                    role.created_at.timestamp(),
-                    role.position,
-                    int(role.is_hoisted),
-                    int(role.bot_id) if role.bot_id is not None else None,
-                    int(role.is_premium_subscriber_role),
-                ),
-                confirm,
-            )
+            future: asyncio.Future[None] | None = await self.role_create(role, confirm)
 
             if confirm:
                 futures.append(future)

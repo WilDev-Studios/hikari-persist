@@ -10,6 +10,11 @@ This page provides a high-level overview of changes in each release. For full de
 ### 0.1.0a4 (STAGING)
 
 - Replace tagged-tuple pipeline with typed step classes, eliminating per-step cloning in `CacheIterator`, as well as fixing the stop signal being clobbered by later pipeline steps and being lost on early skip break.
+- Removal of custom cache objects in favor of `hikari`-native objects.
+- Message caching unsupported; may be implemented in the future if necessary.
+
+!!! warning
+    This release contains breaking changes.
 
 ### 0.1.0a3 (March 8th, 2026)
 
@@ -19,6 +24,9 @@ This page provides a high-level overview of changes in each release. For full de
 - Startup caching logic.
 - `Rule` changes: testing suite; `whitelist`/`blacklist` parameters renamed to `allowlist`/`denylist`.
 - New `cache_messages` parameter in `Cache` constructor.
+
+!!! warning
+    This release contains breaking changes.
 
 ### 0.1.0a2 (March 4th, 2026)
 

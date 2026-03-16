@@ -8,16 +8,11 @@ from collections.abc import (
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from hikaripersist.cached.channel import CachedChannel
-    from hikaripersist.cached.guild import CachedGuild
-    from hikaripersist.cached.member import CachedMember
-    from hikaripersist.cached.message import CachedMessage
-    from hikaripersist.cached.role import CachedRole
+    from hikaripersist.cache import Cache
     from hikaripersist.impl.query import (
         ChannelQuery,
         GuildQuery,
         MemberQuery,
-        MessageQuery,
         RoleQuery,
     )
 
@@ -29,10 +24,12 @@ __all__ = ("Backend",)
 class Backend(ABC):
     """Base persistent cache backend."""
 
+    _cache: Cache
+
     @abstractmethod
     async def channel_create(
         self,
-        channel: hikari.PermissibleGuildChannel,
+        channel: hikari.GuildChannel,
         confirm: bool,
     ) -> asyncio.Future[None] | None:
         """
@@ -40,7 +37,7 @@ class Backend(ABC):
 
         Parameters
         ----------
-        channel : hikari.PermissibleGuildChannel
+        channel : hikari.GuildChannel
             The created channel to store.
         confirm : bool
             If `True`, this method will wait until the database transaction
@@ -80,7 +77,7 @@ class Backend(ABC):
     @abstractmethod
     async def channel_update(
         self,
-        channel: hikari.PermissibleGuildChannel,
+        channel: hikari.GuildChannel,
         confirm: bool,
     ) -> asyncio.Future[None] | None:
         """
@@ -88,7 +85,7 @@ class Backend(ABC):
 
         Parameters
         ----------
-        channel : hikari.PermissibleGuildChannel
+        channel : hikari.GuildChannel
             The updated channel to update.
         confirm : bool
             If `True`, this method will wait until the database transaction
@@ -197,7 +194,7 @@ class Backend(ABC):
     async def iter_channels(
         self,
         query: ChannelQuery,
-    ) -> AsyncIterator[CachedChannel]:
+    ) -> AsyncIterator[hikari.GuildChannel]:
         """
         Iterate through all channels in a query.
 
@@ -208,7 +205,7 @@ class Backend(ABC):
 
         Returns
         -------
-        AsyncIterator[CachedChannel]
+        AsyncIterator[hikari.GuildChannel]
             The async iterator containing the queried channels.
         """
 
@@ -216,7 +213,7 @@ class Backend(ABC):
     async def iter_guilds(
         self,
         query: GuildQuery,
-    ) -> AsyncIterator[CachedGuild]:
+    ) -> AsyncIterator[hikari.Guild]:
         """
         Iterate through all guilds in a query.
 
@@ -227,7 +224,7 @@ class Backend(ABC):
 
         Returns
         -------
-        AsyncIterator[CachedGuild]
+        AsyncIterator[hikari.Guild]
             The async iterator containing the queried guilds.
         """
 
@@ -235,7 +232,7 @@ class Backend(ABC):
     async def iter_members(
         self,
         query: MemberQuery,
-    ) -> AsyncIterator[CachedMember]:
+    ) -> AsyncIterator[hikari.Member]:
         """
         Iterate through all members in a query.
 
@@ -246,34 +243,15 @@ class Backend(ABC):
 
         Returns
         -------
-        AsyncIterator[CachedMember]
+        AsyncIterator[hikari.Member]
             The async iterator containing the queried members.
-        """
-
-    @abstractmethod
-    async def iter_messages(
-        self,
-        query: MessageQuery,
-    ) -> AsyncIterator[CachedMessage]:
-        """
-        Iterate through all channels in a query.
-
-        Parameters
-        ----------
-        query : MessageQuery
-            The message query used in cache lookup.
-
-        Returns
-        -------
-        AsyncIterator[CachedMessage]
-            The async iterator containing the queried messages.
         """
 
     @abstractmethod
     async def iter_roles(
         self,
         query: RoleQuery,
-    ) -> AsyncIterator[CachedRole]:
+    ) -> AsyncIterator[hikari.Role]:
         """
         Iterate through all roles in a query.
 
@@ -284,7 +262,7 @@ class Backend(ABC):
 
         Returns
         -------
-        AsyncIterator[CachedRole]
+        AsyncIterator[hikari.Role]
             The async iterator containing the queried roles.
         """
 
@@ -352,81 +330,6 @@ class Backend(ABC):
         ----------
         member : hikari.Member
             The updated member to update.
-        confirm : bool
-            If `True`, this method will wait until the database transaction
-            containing this operation has been committed before returning.
-            If `False`, the operation is queued and this method returns immediately.
-
-        Returns
-        -------
-        asyncio.Future[None] | None
-            If `confirm`, the returned future to wait for.
-        """
-
-    @abstractmethod
-    async def message_create(
-        self,
-        message: hikari.Message,
-        confirm: bool,
-    ) -> asyncio.Future[None] | None:
-        """
-        Store a created message.
-
-        Parameters
-        ----------
-        message : hikari.Message
-            The created message to store.
-        confirm : bool
-            If `True`, this method will wait until the database transaction
-            containing this operation has been committed before returning.
-            If `False`, the operation is queued and this method returns immediately.
-
-        Returns
-        -------
-        asyncio.Future[None] | None
-            If `confirm`, the returned future to wait for.
-        """
-
-    @abstractmethod
-    async def message_delete(
-        self,
-        message_id: hikari.Snowflake,
-        channel_id: hikari.Snowflake,
-        confirm: bool,
-    ) -> asyncio.Future[None] | None:
-        """
-        Remove a deleted message.
-
-        Parameters
-        ----------
-        message_id : hikari.Snowflake
-            The ID of the message that was deleted.
-        channel_id : hikari.Snowflake
-            The ID of the channel in which the message was deleted.
-        confirm : bool
-            If `True`, this method will wait until the database transaction
-            containing this operation has been committed before returning.
-            If `False`, the operation is queued and this method returns immediately.
-
-        Returns
-        -------
-        asyncio.Future[None] | None
-            If `confirm`, the returned future to wait for.
-        """
-
-    @abstractmethod
-    async def message_update(
-        self,
-        message: hikari.PartialMessage,
-        confirm: bool,
-    ) -> asyncio.Future[None] | None:
-        """
-        Update an updated message.
-
-        Parameters
-        ----------
-        message : hikari.PartialMessage
-            The updated message to update.
         confirm : bool
             If `True`, this method will wait until the database transaction
             containing this operation has been committed before returning.
@@ -537,7 +440,7 @@ class Backend(ABC):
     @abstractmethod
     async def startup_guild_channels(
         self,
-        channels: Iterable[hikari.PermissibleGuildChannel],
+        channels: Iterable[hikari.GuildChannel],
         confirm: bool,
     ) -> asyncio.Future[None] | None:
         """
@@ -545,7 +448,7 @@ class Backend(ABC):
 
         Parameters
         ----------
-        channels : Iterable[hikari.PermissibleGuildChannel]
+        channels : Iterable[hikari.GuildChannel]
             The channels to cache.
         confirm : bool
             If `True`, this method will wait until the database transaction
