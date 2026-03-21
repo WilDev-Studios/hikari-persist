@@ -604,7 +604,7 @@ class RoleQuery(BaseQuery):
         *,
         id: hikari.Snowflake, # noqa: A002
         guild_id_if_missing: hikari.Snowflake | None = None,
-    ) -> hikari.GuildChannel | None:
+    ) -> hikari.Role | None:
         """
         Fetch a role directly from its ID.
 
