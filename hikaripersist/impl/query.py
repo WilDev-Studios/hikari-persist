@@ -14,7 +14,11 @@ if TYPE_CHECKING:
 
     import hikari
 
+import logging
+
 __all__ = ()
+
+logger: logging.Logger = logging.getLogger("persist.query")
 
 @dataclass(slots=True)
 class BaseQuery:
@@ -48,6 +52,62 @@ class ChannelQuery(BaseQuery):
         """
 
         return CacheIterator(self._cache._backend.iter_channels(self))
+
+    async def get(
+        self,
+        *,
+        id: hikari.Snowflake, # noqa: A002
+        fetch_if_missing: bool = False,
+    ) -> hikari.GuildChannel | None:
+        """
+        Fetch a channel directly from its ID.
+
+        Parameters
+        ----------
+        id : hikari.Snowflake
+            The ID of the channel to fetch.
+        fetch_if_missing : bool
+            If not found in cache, automatically fetch it from REST.
+
+        Returns
+        -------
+        hikari.GuildChannel | None
+            The fetched channel from cache or REST, if found.
+
+        Note
+        ----
+        The listed exceptions are only raised when `fetch_if_missing=True`.
+
+        Raises
+        ------
+        hikari.ForbiddenError
+            Missing `hikari.Permissions.VIEW_CHANNEL` in the channel.
+        hikari.InternalServerError
+            Discord had an issue while handling the request.
+        hikari.NotFoundError
+            Channel wasn't found.
+        hikari.RateLimitTooLongError
+            Rate limit occurred longer than bot `max_rate_limit` upon request.
+        hikari.UnauthorizedError
+            Request unauthorized (invalid/missing token).
+        """
+
+        self._id = id
+
+        result: hikari.GuildChannel | None = await CacheIterator(
+            self._cache._backend.iter_channels(self)
+        ).first()
+
+        if fetch_if_missing and result is None:
+            logger.debug("Channel not found in cache, fetching from REST: ChannelID=%s", id)
+
+            fetched: hikari.PartialChannel = await self._cache._bot.rest.fetch_channel(id)
+
+            if isinstance(fetched, hikari.GuildChannel):
+                await self._cache._backend.channel_create(fetched, False)
+                result = fetched
+
+        return result
 
     @overload
     def where(
@@ -269,6 +329,59 @@ class GuildQuery(BaseQuery):
 
         return CacheIterator(self._cache._backend.iter_guilds(self))
 
+    async def get(
+        self,
+        *,
+        id: hikari.Snowflake, # noqa: A002
+        fetch_if_missing: bool = False,
+    ) -> hikari.Guild | None:
+        """
+        Fetch a guild directly from its ID.
+
+        Parameters
+        ----------
+        id : hikari.Snowflake
+            The ID of the guild to fetch.
+        fetch_if_missing : bool
+            If not found in cache, automatically fetch it from REST.
+
+        Returns
+        -------
+        hikari.Guild | None
+            The fetched guild from cache or REST, if found.
+
+        Note
+        ----
+        The listed exceptions are only raised when `fetch_if_missing=True`.
+
+        Raises
+        ------
+        hikari.ForbiddenError
+            Not in the guild.
+        hikari.InternalServerError
+            Discord had an issue while handling the request.
+        hikari.NotFoundError
+            Guild wasn't found.
+        hikari.RateLimitTooLongError
+            Rate limit occurred longer than bot `max_rate_limit` upon request.
+        hikari.UnauthorizedError
+            Request unauthorized (invalid/missing token).
+        """
+
+        self._id = id
+
+        result: hikari.Guild | None = await CacheIterator(
+            self._cache._backend.iter_guilds(self)
+        ).first()
+
+        if fetch_if_missing and result is None:
+            logger.debug("Guild not found in cache, fetching from REST: GuildID=%s", id)
+
+            result = await self._cache._bot.rest.fetch_guild(id)
+            await self._cache._backend.guild_join(result, False)
+
+        return result
+
     def where( # noqa: PLR0913
         self,
         *,
@@ -364,8 +477,68 @@ class MemberQuery(BaseQuery):
 
         return CacheIterator(self._cache._backend.iter_members(self))
 
+    async def get(
+        self,
+        *,
+        guild_id: hikari.Snowflake,
+        member_id: hikari.Snowflake,
+        fetch_if_missing: bool = False,
+    ) -> hikari.Member | None:
+        """
+        Fetch a member directly from their ID.
+
+        Parameters
+        ----------
+        guild_id : hikari.Snowflake
+            The ID of the guild the member is in.
+        member_id : hikari.Snowflake
+            The ID of the member to fetch.
+        fetch_if_missing : bool
+            If not found in cache, automatically fetch it from REST.
+
+        Returns
+        -------
+        hikari.Member | None
+            The fetched member from cache or REST, if found.
+
+        Note
+        ----
+        The listed exceptions are only raised when `fetch_if_missing=True`.
+
+        Raises
+        ------
+        hikari.InternalServerError
+            Discord had an issue while handling the request.
+        hikari.NotFoundError
+            Guild or member weren't found.
+        hikari.RateLimitTooLongError
+            Rate limit occurred longer than bot `max_rate_limit` upon request.
+        hikari.UnauthorizedError
+            Request unauthorized (invalid/missing token).
+        """
+
+        self._guild_id = guild_id
+        self._id = member_id
+
+        result: hikari.Member | None = await CacheIterator(
+            self._cache._backend.iter_members(self)
+        ).first()
+
+        if fetch_if_missing and result is None:
+            logger.debug(
+                "Member not found in cache, fetching from REST: GuildID=%s, MemberID=%s",
+                guild_id,
+                member_id,
+            )
+
+            result = await self._cache._bot.rest.fetch_member(guild_id, member_id)
+            await self._cache._backend.member_create(result, False)
+
+        return result
+
     def where( # noqa: PLR0913
         self,
+        *,
         guild_id: hikari.Snowflake | None = None,
         member_id: hikari.Snowflake | None = None,
         nickname: str | None = None,
@@ -425,6 +598,57 @@ class RoleQuery(BaseQuery):
         """
 
         return CacheIterator(self._cache._backend.iter_roles(self))
+
+    async def get(
+        self,
+        *,
+        id: hikari.Snowflake, # noqa: A002
+        guild_id_if_missing: hikari.Snowflake | None = None,
+    ) -> hikari.GuildChannel | None:
+        """
+        Fetch a role directly from its ID.
+
+        Parameters
+        ----------
+        id : hikari.Snowflake
+            The ID of the role to fetch.
+        guild_id_if_missing : hikari.Snowflake | None
+            If not found in cache, use the guild ID to automatically fetch it from REST.
+
+        Returns
+        -------
+        hikari.Role | None
+            The fetched role from cache or REST, if found.
+
+        Note
+        ----
+        The listed exceptions are only raised when `guild_id_if_missing` is given.
+
+        Raises
+        ------
+        hikari.InternalServerError
+            Discord had an issue while handling the request.
+        hikari.NotFoundError
+            Guild or role wasn't found.
+        hikari.RateLimitTooLongError
+            Rate limit occurred longer than bot `max_rate_limit` upon request.
+        hikari.UnauthorizedError
+            Request unauthorized (invalid/missing token).
+        """
+
+        self._id = id
+
+        result: hikari.Role | None = await CacheIterator(
+            self._cache._backend.iter_roles(self)
+        ).first()
+
+        if guild_id_if_missing is not None and result is None:
+            logger.debug("Role not found in cache, fetching from REST: RoleID=%s", id)
+
+            result = await self._cache._bot.rest.fetch_role(guild_id_if_missing, id)
+            await self._cache._backend.role_create(result, False)
+
+        return result
 
     def where( # noqa: PLR0913
         self,

@@ -109,13 +109,13 @@ The difference between the two is this:
 ```python
 @cache.listen()
 async def event_listener_1(event: hikari.Event):
-    async for guild in cache.guilds.where(id=event.guild_id).limit(1):
-        print(guild)
+    guild = await cache.guilds.get(id=event.guild_id)
+    print(guild)
 
 @cache.listen()
 async def event_listener_2(event: hikari.Event):
-    async for guild in cache.guilds.where(id=event.guild_id).limit(1):
-        print(guild)
+    guild = await cache.guilds.get(id=event.guild_id)
+    print(guild)
 ```
 
 ```bash
