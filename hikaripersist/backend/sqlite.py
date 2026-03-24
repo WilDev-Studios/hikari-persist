@@ -12,6 +12,7 @@ from datetime import (
 )
 from hikari import users
 from hikaripersist.backend.base import Backend
+from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 import asyncio
@@ -53,8 +54,11 @@ class SQLiteBackend(Backend):
     """
 
     __slots__ = (
+        "_backup",
         "_connection",
+        "_connection_file",
         "_filepath",
+        "_interval",
         "_queue",
         "_ready",
         "_writer",
@@ -62,33 +66,61 @@ class SQLiteBackend(Backend):
 
     def __init__(
         self,
-        filepath: str,
+        filepath: Path | str,
+        *,
+        backup_interval: int = 0,
     ) -> None:
         """
         Create a new `SQLite` persistent backend.
 
         Parameters
         ----------
-        filepath : str
+        filepath : Path | str
             The path to the `SQLite` database file.
+        backup_interval : int
+            If `> 0`, the backend should use an in-memory database for performance
+            while using the given filepath as a backup-and-restore database for persistence.
+            This interval configures how often the in-memory database backs up into the file in
+            seconds.
 
         Raises
         ------
         ImportError
             If `aiosqlite` was not installed.
+        TypeError
+            - If `filepath` is not `Path` or `str`.
+            - If `backup_interval` is not `int`.
+        ValueError
+            If `backup_interval` is less than 0.
         """
 
         if not INSTALLED:
             error: str = "SQLiteBackend requires `aiosqlite` to be installed"
             raise ImportError(error)
 
+        if not isinstance(filepath, (Path, str)):
+            error: str = "Provided filepath must be `Path` or `str`"
+            raise TypeError(error)
+
+        if not isinstance(backup_interval, int):
+            error: str = "Provided backup interval must be `int`"
+            raise TypeError(error)
+
+        if backup_interval < 0:
+            error: str = "Provided backup interval must be 0 or greater"
+            raise ValueError(error)
+
         self._connection: aiosqlite.Connection | None = None
-        self._filepath: str = filepath
+        self._filepath: Path | str = filepath
 
         self._writer: asyncio.Task[None] | None = None
         self._queue: asyncio.Queue[
             tuple[str, tuple[Any], asyncio.Future[None] | None]
         ] = asyncio.Queue()
+
+        self._connection_file: aiosqlite.Connection | None = None
+        self._backup: asyncio.Task[None] | None = None
+        self._interval: int = backup_interval
 
         self._ready: asyncio.Event = asyncio.Event()
 
@@ -228,6 +260,16 @@ class SQLiteBackend(Backend):
             CREATE INDEX IF NOT EXISTS idx_roles_guild ON roles(guild_id);
         """) # noqa: E501
         await self._connection.commit()
+
+    async def __backup(self) -> None:
+        try:
+            while True:
+                await asyncio.sleep(self._interval)
+                await self._connection.backup(self._connection_file)
+
+                logger.debug("Backup of in-memory database to file made")
+        except asyncio.CancelledError:
+            return
 
     def __build_query(
         self,
@@ -760,13 +802,35 @@ class SQLiteBackend(Backend):
     async def connect(self) -> None:
         logger.debug("Connecting to SQLite database at %s", self._filepath)
 
-        self._connection = await aiosqlite.connect(self._filepath)
+        if self._interval:
+            logger.debug("Connecting to in-memory SQLite database")
+
+            self._connection = await aiosqlite.connect(":memory:")
+            self._connection_file = await aiosqlite.connect(self._filepath)
+
+            await self._connection_file.backup(self._connection)
+
+            def backup_done(task: asyncio.Task[None]) -> None:
+                if task.cancelled():
+                    return
+
+                exception: BaseException | None = task.exception()
+                if exception is not None:
+                    logger.exception("Backup task crashed", exc_info=exception)
+
+            self._backup = asyncio.create_task(self.__backup(), name="sqlite-backup")
+            self._backup.add_done_callback(backup_done)
+        else:
+            self._connection = await aiosqlite.connect(self._filepath)
 
         await self._connection.execute("PRAGMA foreign_keys=ON;")
-        await self._connection.execute("PRAGMA journal_mode=WAL;")
         await self._connection.execute("PRAGMA synchronous=NORMAL;")
         await self._connection.execute("PRAGMA temp_store=MEMORY;")
-        await self._connection.execute("PRAGMA mmap_size=300000000000;")
+
+        if not self._interval:
+            await self._connection.execute("PRAGMA journal_mode=WAL;")
+            await self._connection.execute("PRAGMA mmap_size=300000000000;")
+
         await self._connection.commit()
 
         version: int | None = await self.__version_get()
@@ -774,17 +838,37 @@ class SQLiteBackend(Backend):
         if version != SQLiteBackend.VERSION:
             await self.__version_migrate(version)
 
+        def writer_done(task: asyncio.Task[None]) -> None:
+            if task.cancelled():
+                return
+
+            exception: BaseException | None = task.exception()
+            if exception is not None:
+                logger.exception("Writer task crashed", exc_info=exception)
+
         self._writer = asyncio.create_task(self.__writer(), name="sqlite-writer")
+        self._writer.add_done_callback(writer_done)
+
         self._ready.set()
 
         logger.info("Connected to SQLite cache database")
 
     async def disconnect(self) -> None:
+        if self._backup:
+            self._backup.cancel()
+
+            with suppress(asyncio.CancelledError):
+                await self._backup
+
+            self._backup = None
+
         if self._writer:
             self._writer.cancel()
 
             with suppress(asyncio.CancelledError):
                 await self._writer
+
+            self._writer = None
 
         remaining: list[tuple[str, tuple[Any], asyncio.Future[None] | None]] = []
         while not self._queue.empty():
@@ -797,7 +881,16 @@ class SQLiteBackend(Backend):
                 await self._connection.execute(sql, values)
             await self._connection.commit()
 
+        if self._interval:
+            logger.debug("Dumping in-memory database to file")
+
+            await self._connection.backup(self._connection_file)
+            await self._connection_file.close()
+
         await self._connection.close()
+
+        self._connection = None
+        self._connection_file = None
 
         logger.info("Disconnected from SQLite cache database")
 
