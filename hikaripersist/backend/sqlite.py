@@ -1958,7 +1958,7 @@ class SQLiteBackend(Backend):
         channels: Iterable[hikari.GuildChannel],
         confirm: bool,
     ) -> asyncio.Future[None] | None:
-        futures: list[asyncio.Future[None]] | None = []
+        futures: list[asyncio.Future[None]] = []
 
         for channel in channels:
             future: asyncio.Future[None] | None = await self.channel_create(channel, confirm)

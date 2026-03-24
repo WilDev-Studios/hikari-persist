@@ -565,7 +565,7 @@ class MemberQuery(BaseQuery):
         return CacheIterator(self._cache._backend.iter_members(self))
 
 class RoleQuery(BaseQuery):
-    """Message backend query."""
+    """Role backend query."""
 
     def __init__(self, cache: Cache) -> None:
         super().__init__(cache)
