@@ -21,6 +21,8 @@ import asyncio
 import hikari
 import inspect
 import logging
+import sys
+import traceback
 
 __all__ = ("Cache",)
 
@@ -133,9 +135,7 @@ class Cache:
         future: asyncio.Future[None] | None = None
 
         if event_type in self._handlers:
-            future: asyncio.Future[None] | None = await self._handlers[event_type](
-                event, needs_confirm
-            )
+            future = await self._handlers[event_type](event, needs_confirm)
 
         if not listeners:
             return
@@ -147,11 +147,17 @@ class Cache:
             if confirms and future is not None:
                 await future
 
-            await func(event)
+            try:
+                await func(event)
+            except Exception as e:
+                logger.error(
+                    "An exception occurred handling an event (%s)",
+                    type(event).__name__,
+                )
+                traceback.print_exception(type(e), e, e.__traceback__.tb_next, file=sys.stderr)
 
         await asyncio.gather(
             *(_invoke(func, confirm) for func, confirm in listeners),
-            return_exceptions=True,
         )
 
     async def __channel_create(
