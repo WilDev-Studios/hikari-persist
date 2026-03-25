@@ -156,9 +156,22 @@ class Cache:
                 )
                 traceback.print_exception(type(e), e, e.__traceback__.tb_next, file=sys.stderr)
 
-        await asyncio.gather(
-            *(_invoke(func, confirm) for func, confirm in listeners),
-        )
+        def complete(task: asyncio.Task[None]) -> None:
+            if task.cancelled():
+                return
+
+            exception: BaseException | None = task.exception()
+            if exception is None:
+                return
+
+            logger.error("Listener task %s failed unexpectedly", task.get_name())
+
+        for func, confirm in listeners:
+            fired: asyncio.Task[None] = asyncio.create_task(
+                _invoke(func, confirm),
+                name=f"event.{type(event).__name__}.{func.__name__}",
+            )
+            fired.add_done_callback(complete)
 
     async def __channel_create(
         self,
