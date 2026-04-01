@@ -38,8 +38,6 @@ __all__ = ("SQLiteBackend",)
 
 logger: logging.Logger = logging.getLogger("persist.sqlite")
 
-BATCH_SIZE_NORMAL: int = 100
-
 class SQLiteBackend(Backend):
     """Use `SQLite` as the persistent cache backend."""
 
@@ -55,6 +53,7 @@ class SQLiteBackend(Backend):
 
     __slots__ = (
         "_backup",
+        "_batch_size",
         "_connection",
         "_connection_file",
         "_filepath",
@@ -69,6 +68,7 @@ class SQLiteBackend(Backend):
         filepath: Path | str,
         *,
         backup_interval: int = 0,
+        batch_size: int = 100,
     ) -> None:
         """
         Create a new `SQLite` persistent backend.
@@ -82,16 +82,21 @@ class SQLiteBackend(Backend):
             while using the given filepath as a backup-and-restore database for persistence.
             This interval configures how often the in-memory database backs up into the file in
             seconds.
+        batch_size : int
+            The size of each batched SQL execution. Iterated reads and writes will occur in batches
+            of this amount.
 
         Raises
         ------
         ImportError
-            If `aiosqlite` was not installed.
+            If `aiosqlite` is not installed.
         TypeError
             - If `filepath` is not `Path` or `str`.
             - If `backup_interval` is not `int`.
+            - If `batch_size` is not `int`.
         ValueError
-            If `backup_interval` is less than 0.
+            - If `backup_interval` is less than `0`.
+            - If `batch_size` is less than `1`.
         """
 
         if not INSTALLED:
@@ -106,12 +111,21 @@ class SQLiteBackend(Backend):
             error: str = "Provided backup interval must be `int`"
             raise TypeError(error)
 
+        if not isinstance(batch_size, int):
+            error: str = "Provided batch size must be `int`"
+            raise TypeError(error)
+
         if backup_interval < 0:
             error: str = "Provided backup interval must be 0 or greater"
             raise ValueError(error)
 
+        if batch_size < 1:
+            error: str = "Provided batch size must be 1 or greater"
+            raise ValueError(error)
+
         self._connection: aiosqlite.Connection | None = None
         self._filepath: Path | str = filepath
+        self._batch_size: int = batch_size
 
         self._writer: asyncio.Task[None] | None = None
         self._queue: asyncio.Queue[
@@ -364,12 +378,9 @@ class SQLiteBackend(Backend):
                 query: tuple[str, tuple[Any], asyncio.Future[None] | None] = await self._queue.get()
                 batch: list[tuple[str, tuple[Any], asyncio.Future[None] | None]] = [query]
 
-                while not self._queue.empty():
+                while not self._queue.empty() and len(batch) < self._batch_size:
                     try:
                         batch.append(self._queue.get_nowait())
-
-                        if len(batch) >= BATCH_SIZE_NORMAL:
-                            break
                     except asyncio.QueueEmpty:
                         break
 
@@ -1120,7 +1131,7 @@ class SQLiteBackend(Backend):
 
         async with self._connection.execute(sql, tuple(params)) as cursor:
             while True:
-                rows: Iterable[aiosqlite.Row] = await cursor.fetchmany(BATCH_SIZE_NORMAL)
+                rows: Iterable[aiosqlite.Row] = await cursor.fetchmany(self._batch_size)
 
                 if not rows:
                     break
@@ -1407,7 +1418,7 @@ class SQLiteBackend(Backend):
 
         async with self._connection.execute(sql, tuple(params)) as cursor:
             while True:
-                rows: Iterable[aiosqlite.Row] = await cursor.fetchmany(BATCH_SIZE_NORMAL)
+                rows: Iterable[aiosqlite.Row] = await cursor.fetchmany(self._batch_size)
 
                 if not rows:
                     break
@@ -1473,7 +1484,7 @@ class SQLiteBackend(Backend):
 
         async with self._connection.execute(sql, tuple(params)) as cursor:
             while True:
-                members: Iterable[aiosqlite.Row] = await cursor.fetchmany(BATCH_SIZE_NORMAL)
+                members: Iterable[aiosqlite.Row] = await cursor.fetchmany(self._batch_size)
 
                 if not members:
                     break
@@ -1569,7 +1580,7 @@ class SQLiteBackend(Backend):
 
         async with self._connection.execute(sql, tuple(params)) as cursor:
             while True:
-                rows: Iterable[aiosqlite.Row] = await cursor.fetchmany(BATCH_SIZE_NORMAL)
+                rows: Iterable[aiosqlite.Row] = await cursor.fetchmany(self._batch_size)
 
                 if not rows:
                     break
