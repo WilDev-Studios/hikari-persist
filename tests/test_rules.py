@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 import hikari
 
+from unittest.mock import MagicMock
 from hikaripersist.rule import (
     ChannelRule,
     GuildRule,
@@ -26,10 +27,50 @@ CHANNEL_A = sf(10)
 CHANNEL_B = sf(11)
 USER_A    = sf(20)
 USER_B    = sf(21)
-MESSAGE_A = sf(30)
-MESSAGE_B = sf(31)
 ROLE_A    = sf(40)
 ROLE_B    = sf(41)
+
+
+# ---------------------------------------------------------------------------
+# Object factories
+# ---------------------------------------------------------------------------
+
+def make_channel(
+    channel_id: hikari.Snowflake = CHANNEL_A,
+    guild_id: hikari.Snowflake = GUILD_A,
+) -> hikari.GuildChannel:
+    channel = MagicMock(spec=hikari.GuildChannel)
+    channel.id = channel_id
+    channel.guild_id = guild_id
+    return channel
+
+
+def make_guild(
+    guild_id: hikari.Snowflake = GUILD_A,
+) -> hikari.Guild:
+    guild = MagicMock(spec=hikari.Guild)
+    guild.id = guild_id
+    return guild
+
+
+def make_member(
+    user_id: hikari.Snowflake = USER_A,
+    guild_id: hikari.Snowflake = GUILD_A,
+) -> hikari.Member:
+    member = MagicMock(spec=hikari.Member)
+    member.id = user_id
+    member.guild_id = guild_id
+    return member
+
+
+def make_role(
+    role_id: hikari.Snowflake = ROLE_A,
+    guild_id: hikari.Snowflake = GUILD_A,
+) -> hikari.Role:
+    role = MagicMock(spec=hikari.Role)
+    role.id = role_id
+    role.guild_id = guild_id
+    return role
 
 
 # ---------------------------------------------------------------------------
@@ -42,57 +83,57 @@ class TestChannelRule:
 
     def test_default_allows_everything(self) -> None:
         rule = ChannelRule()
-        assert rule.can_cache(CHANNEL_A, GUILD_A) is True
+        assert rule.can_cache(make_channel()) is True
 
     # --- channel_denylist ---
 
     def test_channel_denylist_blocks_listed(self) -> None:
         rule = ChannelRule(channel_denylist=[CHANNEL_A])
-        assert rule.can_cache(CHANNEL_A, GUILD_A) is False
+        assert rule.can_cache(make_channel(CHANNEL_A)) is False
 
     def test_channel_denylist_allows_unlisted(self) -> None:
         rule = ChannelRule(channel_denylist=[CHANNEL_A])
-        assert rule.can_cache(CHANNEL_B, GUILD_A) is True
+        assert rule.can_cache(make_channel(CHANNEL_B)) is True
 
     def test_channel_denylist_multiple(self) -> None:
         rule = ChannelRule(channel_denylist=[CHANNEL_A, CHANNEL_B])
-        assert rule.can_cache(CHANNEL_A, GUILD_A) is False
-        assert rule.can_cache(CHANNEL_B, GUILD_A) is False
+        assert rule.can_cache(make_channel(CHANNEL_A)) is False
+        assert rule.can_cache(make_channel(CHANNEL_B)) is False
 
     # --- channel_allowlist ---
 
     def test_channel_allowlist_allows_listed(self) -> None:
         rule = ChannelRule(channel_allowlist=[CHANNEL_A])
-        assert rule.can_cache(CHANNEL_A, GUILD_A) is True
+        assert rule.can_cache(make_channel(CHANNEL_A)) is True
 
     def test_channel_allowlist_blocks_unlisted(self) -> None:
         rule = ChannelRule(channel_allowlist=[CHANNEL_A])
-        assert rule.can_cache(CHANNEL_B, GUILD_A) is False
+        assert rule.can_cache(make_channel(CHANNEL_B)) is False
 
     def test_channel_allowlist_multiple(self) -> None:
         rule = ChannelRule(channel_allowlist=[CHANNEL_A, CHANNEL_B])
-        assert rule.can_cache(CHANNEL_A, GUILD_A) is True
-        assert rule.can_cache(CHANNEL_B, GUILD_A) is True
+        assert rule.can_cache(make_channel(CHANNEL_A)) is True
+        assert rule.can_cache(make_channel(CHANNEL_B)) is True
 
     # --- guild_denylist ---
 
     def test_guild_denylist_blocks_listed(self) -> None:
         rule = ChannelRule(guild_denylist=[GUILD_A])
-        assert rule.can_cache(CHANNEL_A, GUILD_A) is False
+        assert rule.can_cache(make_channel(CHANNEL_A, GUILD_A)) is False
 
     def test_guild_denylist_allows_unlisted(self) -> None:
         rule = ChannelRule(guild_denylist=[GUILD_A])
-        assert rule.can_cache(CHANNEL_A, GUILD_B) is True
+        assert rule.can_cache(make_channel(CHANNEL_A, GUILD_B)) is True
 
     # --- guild_allowlist ---
 
     def test_guild_allowlist_allows_listed(self) -> None:
         rule = ChannelRule(guild_allowlist=[GUILD_A])
-        assert rule.can_cache(CHANNEL_A, GUILD_A) is True
+        assert rule.can_cache(make_channel(CHANNEL_A, GUILD_A)) is True
 
     def test_guild_allowlist_blocks_unlisted(self) -> None:
         rule = ChannelRule(guild_allowlist=[GUILD_A])
-        assert rule.can_cache(CHANNEL_A, GUILD_B) is False
+        assert rule.can_cache(make_channel(CHANNEL_A, GUILD_B)) is False
 
     # --- denylist takes priority over allowlist ---
 
@@ -101,45 +142,63 @@ class TestChannelRule:
             channel_denylist=[CHANNEL_A],
             channel_allowlist=[CHANNEL_A],
         )
-        assert rule.can_cache(CHANNEL_A, GUILD_A) is False
+        assert rule.can_cache(make_channel(CHANNEL_A)) is False
 
     def test_denylist_takes_priority_over_allowlist_guild(self) -> None:
         rule = ChannelRule(
             guild_denylist=[GUILD_A],
             guild_allowlist=[GUILD_A],
         )
-        assert rule.can_cache(CHANNEL_A, GUILD_A) is False
+        assert rule.can_cache(make_channel(CHANNEL_A, GUILD_A)) is False
 
     # --- combined rules ---
 
     def test_channel_passes_guild_blocked(self) -> None:
         rule = ChannelRule(guild_denylist=[GUILD_A])
-        assert rule.can_cache(CHANNEL_A, GUILD_A) is False
+        assert rule.can_cache(make_channel(CHANNEL_A, GUILD_A)) is False
 
     def test_guild_passes_channel_blocked(self) -> None:
         rule = ChannelRule(channel_denylist=[CHANNEL_A])
-        assert rule.can_cache(CHANNEL_A, GUILD_A) is False
+        assert rule.can_cache(make_channel(CHANNEL_A, GUILD_A)) is False
 
     def test_both_allowlists_both_pass(self) -> None:
         rule = ChannelRule(
             channel_allowlist=[CHANNEL_A],
             guild_allowlist=[GUILD_A],
         )
-        assert rule.can_cache(CHANNEL_A, GUILD_A) is True
+        assert rule.can_cache(make_channel(CHANNEL_A, GUILD_A)) is True
 
     def test_both_allowlists_channel_fails(self) -> None:
         rule = ChannelRule(
             channel_allowlist=[CHANNEL_A],
             guild_allowlist=[GUILD_A],
         )
-        assert rule.can_cache(CHANNEL_B, GUILD_A) is False
+        assert rule.can_cache(make_channel(CHANNEL_B, GUILD_A)) is False
 
     def test_both_allowlists_guild_fails(self) -> None:
         rule = ChannelRule(
             channel_allowlist=[CHANNEL_A],
             guild_allowlist=[GUILD_A],
         )
-        assert rule.can_cache(CHANNEL_A, GUILD_B) is False
+        assert rule.can_cache(make_channel(CHANNEL_A, GUILD_B)) is False
+
+    # --- predicate ---
+
+    def test_predicate_allows(self) -> None:
+        rule = ChannelRule(predicate=lambda c: c.id == CHANNEL_A)
+        assert rule.can_cache(make_channel(CHANNEL_A)) is True
+
+    def test_predicate_blocks(self) -> None:
+        rule = ChannelRule(predicate=lambda c: c.id == CHANNEL_A)
+        assert rule.can_cache(make_channel(CHANNEL_B)) is False
+
+    def test_predicate_takes_priority(self) -> None:
+        # predicate blocks even if allowlist would pass
+        rule = ChannelRule(
+            channel_allowlist=[CHANNEL_A],
+            predicate=lambda c: False,
+        )
+        assert rule.can_cache(make_channel(CHANNEL_A)) is False
 
     # --- type errors ---
 
@@ -160,34 +219,43 @@ class TestGuildRule:
 
     def test_default_allows_everything(self) -> None:
         rule = GuildRule()
-        assert rule.can_cache(GUILD_A) is True
+        assert rule.can_cache(make_guild()) is True
 
     def test_guild_denylist_blocks_listed(self) -> None:
         rule = GuildRule(guild_denylist=[GUILD_A])
-        assert rule.can_cache(GUILD_A) is False
+        assert rule.can_cache(make_guild(GUILD_A)) is False
 
     def test_guild_denylist_allows_unlisted(self) -> None:
         rule = GuildRule(guild_denylist=[GUILD_A])
-        assert rule.can_cache(GUILD_B) is True
+        assert rule.can_cache(make_guild(GUILD_B)) is True
 
     def test_guild_allowlist_allows_listed(self) -> None:
         rule = GuildRule(guild_allowlist=[GUILD_A])
-        assert rule.can_cache(GUILD_A) is True
+        assert rule.can_cache(make_guild(GUILD_A)) is True
 
     def test_guild_allowlist_blocks_unlisted(self) -> None:
         rule = GuildRule(guild_allowlist=[GUILD_A])
-        assert rule.can_cache(GUILD_B) is False
+        assert rule.can_cache(make_guild(GUILD_B)) is False
 
     def test_denylist_takes_priority_over_allowlist(self) -> None:
         rule = GuildRule(
             guild_denylist=[GUILD_A],
             guild_allowlist=[GUILD_A],
         )
-        assert rule.can_cache(GUILD_A) is False
+        assert rule.can_cache(make_guild(GUILD_A)) is False
 
     def test_empty_allowlist_allows_all(self) -> None:
         rule = GuildRule(guild_allowlist=[])
-        assert rule.can_cache(GUILD_A) is True
+        assert rule.can_cache(make_guild(GUILD_A)) is True
+
+    def test_predicate_blocks(self) -> None:
+        rule = GuildRule(predicate=lambda g: False)
+        assert rule.can_cache(make_guild()) is False
+
+    def test_predicate_allows(self) -> None:
+        rule = GuildRule(predicate=lambda g: g.id == GUILD_A)
+        assert rule.can_cache(make_guild(GUILD_A)) is True
+        assert rule.can_cache(make_guild(GUILD_B)) is False
 
     def test_invalid_type(self) -> None:
         with pytest.raises(TypeError):
@@ -202,70 +270,79 @@ class TestMemberRule:
 
     def test_default_allows_everything(self) -> None:
         rule = MemberRule()
-        assert rule.can_cache(GUILD_A, USER_A) is True
+        assert rule.can_cache(make_member()) is True
 
     def test_guild_denylist_blocks(self) -> None:
         rule = MemberRule(guild_denylist=[GUILD_A])
-        assert rule.can_cache(GUILD_A, USER_A) is False
+        assert rule.can_cache(make_member(USER_A, GUILD_A)) is False
 
     def test_guild_denylist_allows_other_guild(self) -> None:
         rule = MemberRule(guild_denylist=[GUILD_A])
-        assert rule.can_cache(GUILD_B, USER_A) is True
+        assert rule.can_cache(make_member(USER_A, GUILD_B)) is True
 
     def test_guild_allowlist_blocks_unlisted(self) -> None:
         rule = MemberRule(guild_allowlist=[GUILD_A])
-        assert rule.can_cache(GUILD_B, USER_A) is False
+        assert rule.can_cache(make_member(USER_A, GUILD_B)) is False
 
     def test_user_denylist_blocks(self) -> None:
         rule = MemberRule(user_denylist=[USER_A])
-        assert rule.can_cache(GUILD_A, USER_A) is False
+        assert rule.can_cache(make_member(USER_A, GUILD_A)) is False
 
     def test_user_denylist_allows_other_user(self) -> None:
         rule = MemberRule(user_denylist=[USER_A])
-        assert rule.can_cache(GUILD_A, USER_B) is True
+        assert rule.can_cache(make_member(USER_B, GUILD_A)) is True
 
     def test_user_allowlist_blocks_unlisted(self) -> None:
         rule = MemberRule(user_allowlist=[USER_A])
-        assert rule.can_cache(GUILD_A, USER_B) is False
+        assert rule.can_cache(make_member(USER_B, GUILD_A)) is False
 
     def test_user_allowlist_allows_listed(self) -> None:
         rule = MemberRule(user_allowlist=[USER_A])
-        assert rule.can_cache(GUILD_A, USER_A) is True
+        assert rule.can_cache(make_member(USER_A, GUILD_A)) is True
 
     def test_guild_denylist_takes_priority(self) -> None:
         rule = MemberRule(
             guild_denylist=[GUILD_A],
             guild_allowlist=[GUILD_A],
         )
-        assert rule.can_cache(GUILD_A, USER_A) is False
+        assert rule.can_cache(make_member(USER_A, GUILD_A)) is False
 
     def test_user_denylist_takes_priority(self) -> None:
         rule = MemberRule(
             user_denylist=[USER_A],
             user_allowlist=[USER_A],
         )
-        assert rule.can_cache(GUILD_A, USER_A) is False
+        assert rule.can_cache(make_member(USER_A, GUILD_A)) is False
 
     def test_guild_blocked_user_allowed(self) -> None:
         rule = MemberRule(
             guild_denylist=[GUILD_A],
             user_allowlist=[USER_A],
         )
-        assert rule.can_cache(GUILD_A, USER_A) is False
+        assert rule.can_cache(make_member(USER_A, GUILD_A)) is False
 
     def test_guild_allowed_user_blocked(self) -> None:
         rule = MemberRule(
             guild_allowlist=[GUILD_A],
             user_denylist=[USER_A],
         )
-        assert rule.can_cache(GUILD_A, USER_A) is False
+        assert rule.can_cache(make_member(USER_A, GUILD_A)) is False
 
     def test_both_pass(self) -> None:
         rule = MemberRule(
             guild_allowlist=[GUILD_A],
             user_allowlist=[USER_A],
         )
-        assert rule.can_cache(GUILD_A, USER_A) is True
+        assert rule.can_cache(make_member(USER_A, GUILD_A)) is True
+
+    def test_predicate_blocks(self) -> None:
+        rule = MemberRule(predicate=lambda m: False)
+        assert rule.can_cache(make_member()) is False
+
+    def test_predicate_allows(self) -> None:
+        rule = MemberRule(predicate=lambda m: m.id == USER_A)
+        assert rule.can_cache(make_member(USER_A)) is True
+        assert rule.can_cache(make_member(USER_B)) is False
 
     def test_invalid_type(self) -> None:
         with pytest.raises(TypeError):
@@ -280,55 +357,64 @@ class TestRoleRule:
 
     def test_default_allows_everything(self) -> None:
         rule = RoleRule()
-        assert rule.can_cache(GUILD_A, ROLE_A) is True
+        assert rule.can_cache(make_role()) is True
 
     def test_guild_denylist(self) -> None:
         rule = RoleRule(guild_denylist=[GUILD_A])
-        assert rule.can_cache(GUILD_A, ROLE_A) is False
-        assert rule.can_cache(GUILD_B, ROLE_A) is True
+        assert rule.can_cache(make_role(ROLE_A, GUILD_A)) is False
+        assert rule.can_cache(make_role(ROLE_A, GUILD_B)) is True
 
     def test_guild_allowlist(self) -> None:
         rule = RoleRule(guild_allowlist=[GUILD_A])
-        assert rule.can_cache(GUILD_A, ROLE_A) is True
-        assert rule.can_cache(GUILD_B, ROLE_A) is False
+        assert rule.can_cache(make_role(ROLE_A, GUILD_A)) is True
+        assert rule.can_cache(make_role(ROLE_A, GUILD_B)) is False
 
     def test_role_denylist(self) -> None:
         rule = RoleRule(role_denylist=[ROLE_A])
-        assert rule.can_cache(GUILD_A, ROLE_A) is False
-        assert rule.can_cache(GUILD_A, ROLE_B) is True
+        assert rule.can_cache(make_role(ROLE_A, GUILD_A)) is False
+        assert rule.can_cache(make_role(ROLE_B, GUILD_A)) is True
 
     def test_role_allowlist(self) -> None:
         rule = RoleRule(role_allowlist=[ROLE_A])
-        assert rule.can_cache(GUILD_A, ROLE_A) is True
-        assert rule.can_cache(GUILD_A, ROLE_B) is False
+        assert rule.can_cache(make_role(ROLE_A, GUILD_A)) is True
+        assert rule.can_cache(make_role(ROLE_B, GUILD_A)) is False
 
     def test_guild_denylist_takes_priority(self) -> None:
         rule = RoleRule(
             guild_denylist=[GUILD_A],
             guild_allowlist=[GUILD_A],
         )
-        assert rule.can_cache(GUILD_A, ROLE_A) is False
+        assert rule.can_cache(make_role(ROLE_A, GUILD_A)) is False
 
     def test_role_denylist_takes_priority(self) -> None:
         rule = RoleRule(
             role_denylist=[ROLE_A],
             role_allowlist=[ROLE_A],
         )
-        assert rule.can_cache(GUILD_A, ROLE_A) is False
+        assert rule.can_cache(make_role(ROLE_A, GUILD_A)) is False
 
     def test_guild_blocked_role_irrelevant(self) -> None:
         rule = RoleRule(
             guild_denylist=[GUILD_A],
             role_allowlist=[ROLE_A],
         )
-        assert rule.can_cache(GUILD_A, ROLE_A) is False
+        assert rule.can_cache(make_role(ROLE_A, GUILD_A)) is False
 
     def test_both_pass(self) -> None:
         rule = RoleRule(
             guild_allowlist=[GUILD_A],
             role_allowlist=[ROLE_A],
         )
-        assert rule.can_cache(GUILD_A, ROLE_A) is True
+        assert rule.can_cache(make_role(ROLE_A, GUILD_A)) is True
+
+    def test_predicate_blocks(self) -> None:
+        rule = RoleRule(predicate=lambda r: False)
+        assert rule.can_cache(make_role()) is False
+
+    def test_predicate_allows(self) -> None:
+        rule = RoleRule(predicate=lambda r: r.id == ROLE_A)
+        assert rule.can_cache(make_role(ROLE_A)) is True
+        assert rule.can_cache(make_role(ROLE_B)) is False
 
     def test_invalid_type(self) -> None:
         with pytest.raises(TypeError):
@@ -380,9 +466,9 @@ class TestRule:
         with pytest.raises(TypeError):
             Rule(member=RoleRule())  # type: ignore
 
-    def test_invalid_message_type(self) -> None:
+    def test_invalid_role_type(self) -> None:
         with pytest.raises(TypeError):
-            Rule(message=MemberRule())  # type: ignore
+            Rule(role=MemberRule())  # type: ignore
 
     def test_all_custom_rules(self) -> None:
         rule = Rule(

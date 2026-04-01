@@ -179,10 +179,7 @@ class Cache:
         event: hikari.GuildChannelCreateEvent,
         confirm: bool,
     ) -> asyncio.Future[None] | None:
-        if not self._rule._channel.can_cache(
-            event.channel_id,
-            event.guild_id,
-        ):
+        if not self._rule._channel.can_cache(event.channel):
             logger.debug(
                 "Ignoring CHANNEL_CREATE - ruleset violation: ChannelID=%s",
                 event.channel_id,
@@ -211,10 +208,7 @@ class Cache:
         event: hikari.GuildChannelUpdateEvent,
         confirm: bool,
     ) -> asyncio.Future[None] | None:
-        if not self._rule._channel.can_cache(
-            event.channel_id,
-            event.guild_id,
-        ):
+        if not self._rule._channel.can_cache(event.channel):
             logger.debug(
                 "Ignoring CHANNEL_UPDATE - ruleset violation: ChannelID=%s",
                 event.channel_id,
@@ -236,9 +230,7 @@ class Cache:
 
         channels: set[hikari.PermissibleGuildChannel] = set()
         for channel in event.channels.values():
-            if self._rule._channel.can_cache(
-                channel.id, channel.guild_id
-            ):
+            if self._rule._channel.can_cache(channel):
                 channels.add(channel)
             else:
                 logger.debug(
@@ -259,9 +251,7 @@ class Cache:
             if future:
                 futures.append(future)
 
-        if self._rule._guild.can_cache(
-            event.guild_id,
-        ):
+        if self._rule._guild.can_cache(event.guild):
             logger.debug(
                 "Cached GUILD_AVAILABLE:Guild: GuildID=%s",
                 event.guild_id,
@@ -280,9 +270,7 @@ class Cache:
 
         members: set[hikari.Member] = set()
         for member in event.members.values():
-            if self._rule._member.can_cache(
-                member.guild_id, member.id,
-            ):
+            if self._rule._member.can_cache(member):
                 members.add(member)
             else:
                 logger.debug(
@@ -305,9 +293,7 @@ class Cache:
 
         roles: set[hikari.Role] = set()
         for role in event.roles.values():
-            if self._rule._role.can_cache(
-                role.guild_id, role.id,
-            ):
+            if self._rule._role.can_cache(role):
                 roles.add(role)
             else:
                 logger.debug(
@@ -338,9 +324,7 @@ class Cache:
         event: hikari.GuildJoinEvent,
         confirm: bool,
     ) -> asyncio.Future[None] | None:
-        if not self._rule._guild.can_cache(
-            event.guild_id,
-        ):
+        if not self._rule._guild.can_cache(event.guild):
             logger.debug(
                 "Ignoring GUILD_JOIN - ruleset violation: GuildID=%s",
                 event.guild_id,
@@ -369,9 +353,7 @@ class Cache:
         event: hikari.GuildUpdateEvent,
         confirm: bool,
     ) -> asyncio.Future[None] | None:
-        if not self._rule._guild.can_cache(
-            event.guild_id,
-        ):
+        if not self._rule._guild.can_cache(event.guild):
             logger.debug(
                 "Ignoring GUILD_UPDATE - ruleset violation: GuildID=%s",
                 event.guild_id,
@@ -392,10 +374,7 @@ class Cache:
         futures: list[asyncio.Future[None]] = []
 
         for member in event.members.values():
-            if not self._rule._member.can_cache(
-                event.guild_id,
-                member.id,
-            ):
+            if not self._rule._member.can_cache(member):
                 logger.debug(
                     "Ignoring MEMBER_CHUNK:Member - ruleset violation: "
                     "UserID=%s, GuildID=%s",
@@ -416,10 +395,7 @@ class Cache:
         event: hikari.MemberCreateEvent,
         confirm: bool,
     ) -> asyncio.Future[None] | None:
-        if not self._rule._member.can_cache(
-            event.guild_id,
-            event.user_id,
-        ):
+        if not self._rule._member.can_cache(event.member):
             logger.debug(
                 "Ignoring MEMBER_CREATE - ruleset violation: "
                 "UserID=%s, GuildID=%s",
@@ -452,10 +428,7 @@ class Cache:
         event: hikari.MemberUpdateEvent,
         confirm: bool,
     ) -> asyncio.Future[None] | None:
-        if not self._rule._member.can_cache(
-            event.guild_id,
-            event.user_id,
-        ):
+        if not self._rule._member.can_cache(event.member):
             logger.debug(
                 "Ignoring MEMBER_UPDATE - ruleset violation:"
                 "UserID=%s, GuildID=%s",
@@ -476,10 +449,7 @@ class Cache:
         event: hikari.RoleCreateEvent,
         confirm: bool,
     ) -> asyncio.Future[None] | None:
-        if not self._rule._role.can_cache(
-            event.guild_id,
-            event.role_id,
-        ):
+        if not self._rule._role.can_cache(event.role):
             logger.debug(
                 "Ignoring ROLE_CREATE - ruleset violation: "
                 "RoleID=%s, GuildID=%s",
@@ -512,10 +482,7 @@ class Cache:
         event: hikari.RoleUpdateEvent,
         confirm: bool,
     ) -> asyncio.Future[None] | None:
-        if not self._rule._role.can_cache(
-            event.guild_id,
-            event.role_id,
-        ):
+        if not self._rule._role.can_cache(event.role):
             logger.debug(
                 "Ignoring ROLE_UPDATE - ruleset violation: "
                 "RoleID=%s, GuildID=%s",
@@ -536,10 +503,7 @@ class Cache:
         event: hikari.GuildThreadCreateEvent,
         confirm: bool,
     ) -> asyncio.Future[None] | None:
-        if not self._rule._channel.can_cache(
-            event.thread_id,
-            event.guild_id,
-        ):
+        if not self._rule._channel.can_cache(event.thread):
             logger.debug(
                 "Ignoring THREAD_CREATE - ruleset violation: ThreadID=%s",
                 event.thread_id,
@@ -568,10 +532,7 @@ class Cache:
         event: hikari.GuildThreadUpdateEvent,
         confirm: bool,
     ) -> asyncio.Future[None] | None:
-        if not self._rule._channel.can_cache(
-            event.thread_id,
-            event.guild_id,
-        ):
+        if not self._rule._channel.can_cache(event.thread):
             logger.debug(
                 "Ignoring THREAD_UPDATE - ruleset violation: ThreadID=%s",
                 event.thread_id,

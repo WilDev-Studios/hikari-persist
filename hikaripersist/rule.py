@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import (
+    Callable,
+    Iterable,
+)
 from typing import TypeVar
 
 import hikari
@@ -44,6 +47,7 @@ class ChannelRule:
         channel_allowlist: Iterable[hikari.Snowflakeish] | None = None,
         guild_denylist: Iterable[hikari.Snowflakeish] | None = None,
         guild_allowlist: Iterable[hikari.Snowflakeish] | None = None,
+        predicate: Callable[[hikari.GuildChannel], bool] | None = None,
     ) -> None:
         """
         Create a cache channel rule.
@@ -58,11 +62,15 @@ class ChannelRule:
             If provided, an iterable of guilds to ignore.
         guild_allowlist : Iterable[hikari.Snowflakeish] | None
             If provided, ignore all guilds except these.
+        predicate : Callable[[hikari.GuildChannel], bool] | None
+            If provided, a predicate method used for advanced, custom filtration of pending
+            channels. Returns `True` if the channel should be cached, `False` otherwise.
 
         Raises
         ------
         TypeError
-            If any parameter is provided and is not `Iterable` of `hikari.Snowflakeish`.
+            If any parameter except `predicate` is provided and is not `Iterable` of
+            `hikari.Snowflakeish`.
         """
 
         self._channel_denylist: set[hikari.Snowflake] = to_snowflake_set(
@@ -81,26 +89,29 @@ class ChannelRule:
             guild_allowlist,
             "guild_allowlist",
         )
+        self._predicate: Callable[[hikari.GuildChannel], bool] | None = predicate
 
     def can_cache(
         self,
-        channel_id: hikari.Snowflake,
-        guild_id: hikari.Snowflake,
+        channel: hikari.GuildChannel,
     ) -> bool:
         """
         Return whether a channel passes the rule.
         """
 
-        if channel_id in self._channel_denylist:
+        if self._predicate and not self._predicate(channel):
             return False
 
-        if self._channel_allowlist and channel_id not in self._channel_allowlist:
+        if channel.id in self._channel_denylist:
             return False
 
-        if guild_id in self._guild_denylist:
+        if self._channel_allowlist and channel.id not in self._channel_allowlist:
             return False
 
-        if self._guild_allowlist and guild_id not in self._guild_allowlist: # noqa: SIM103
+        if channel.guild_id in self._guild_denylist:
+            return False
+
+        if self._guild_allowlist and channel.guild_id not in self._guild_allowlist: # noqa: SIM103
             return False
 
         return True
@@ -113,6 +124,7 @@ class GuildRule:
         *,
         guild_denylist: Iterable[hikari.Snowflakeish] | None = None,
         guild_allowlist: Iterable[hikari.Snowflakeish] | None = None,
+        predicate: Callable[[hikari.Guild], bool] | None = None,
     ) -> None:
         """
         Create a cache guild rule.
@@ -123,11 +135,15 @@ class GuildRule:
             If provided, an iterable of all guilds to ignore.
         guild_allowlist : Iterable[hikari.Snowflakeish] | None
             If provided, ignore all guilds except these.
+        predicate : Callable[[hikari.Guild], bool] | None
+            If provided, a predicate method used for advanced, custom filtration of pending
+            guilds. Returns `True` if the guild should be cached, `False` otherwise.
 
         Raises
         ------
         TypeError
-            If any parameter is provided and is not `Iterable` of `hikari.Snowflakeish`.
+            If any parameter except `predicate` is provided and is not `Iterable` of
+            `hikari.Snowflakeish`.
         """
 
         self._guild_denylist: set[hikari.Snowflake] = to_snowflake_set(
@@ -138,19 +154,23 @@ class GuildRule:
             guild_allowlist,
             "guild_allowlist",
         )
+        self._predicate: Callable[[hikari.Guild], bool] | None = predicate
 
     def can_cache(
         self,
-        guild_id: hikari.Snowflake,
+        guild: hikari.Guild,
     ) -> bool:
         """
         Return whether a guild passes the rule.
         """
 
-        if guild_id in self._guild_denylist:
+        if self._predicate and not self._predicate(guild):
             return False
 
-        if self._guild_allowlist and guild_id not in self._guild_allowlist: # noqa: SIM103
+        if guild.id in self._guild_denylist:
+            return False
+
+        if self._guild_allowlist and guild.id not in self._guild_allowlist: # noqa: SIM103
             return False
 
         return True
@@ -165,6 +185,7 @@ class MemberRule:
         guild_allowlist: Iterable[hikari.Snowflakeish] | None = None,
         user_denylist: Iterable[hikari.Snowflakeish] | None = None,
         user_allowlist: Iterable[hikari.Snowflakeish] | None = None,
+        predicate: Callable[[hikari.Member], bool] | None = None,
     ) -> None:
         """
         Create a cache member rule.
@@ -179,11 +200,15 @@ class MemberRule:
             If provided, an iterable of all users to ignore.
         user_allowlist : Iterable[hikari.Snowflakeish] | None
             If provided, ignore all users except these.
+        predicate : Callable[[hikari.Member], bool] | None
+            If provided, a predicate method used for advanced, custom filtration of pending
+            members. Returns `True` if the member should be cached, `False` otherwise.
 
         Raises
         ------
         TypeError
-            If any parameter is provided and is not `Iterable` of `hikari.Snowflakeish`.
+            If any parameter except `predicate` is provided and is not `Iterable` of
+            `hikari.Snowflakeish`.
         """
 
         self._guild_denylist: set[hikari.Snowflake] = to_snowflake_set(
@@ -202,26 +227,29 @@ class MemberRule:
             user_allowlist,
             "user_allowlist",
         )
+        self._predicate: Callable[[hikari.Member], bool] | None = predicate
 
     def can_cache(
         self,
-        guild_id: hikari.Snowflake,
-        user_id: hikari.Snowflake,
+        member: hikari.Member,
     ) -> bool:
         """
         Return whether a member passes the rule.
         """
 
-        if guild_id in self._guild_denylist:
+        if self._predicate and not self._predicate(member):
             return False
 
-        if self._guild_allowlist and guild_id not in self._guild_allowlist:
+        if member.guild_id in self._guild_denylist:
             return False
 
-        if user_id in self._user_denylist:
+        if self._guild_allowlist and member.guild_id not in self._guild_allowlist:
             return False
 
-        if self._user_allowlist and user_id not in self._user_allowlist: # noqa: SIM103
+        if member.id in self._user_denylist:
+            return False
+
+        if self._user_allowlist and member.id not in self._user_allowlist: # noqa: SIM103
             return False
 
         return True
@@ -236,6 +264,7 @@ class RoleRule:
         guild_allowlist: Iterable[hikari.Snowflakeish] | None = None,
         role_denylist: Iterable[hikari.Snowflakeish] | None = None,
         role_allowlist: Iterable[hikari.Snowflakeish] | None = None,
+        predicate: Callable[[hikari.Role], bool] | None = None,
     ) -> None:
         """
         Create a cache role rule.
@@ -250,6 +279,15 @@ class RoleRule:
             If provided, an iterable of all roles to ignore.
         role_allowlist : Iterable[hikari.Snowflakeish] | None
             If provided, ignore all roles except these.
+        predicate : Callable[[hikari.Role], bool] | None
+            If provided, a predicate method used for advanced, custom filtration of pending
+            roles. Returns `True` if the role should be cached, `False` otherwise.
+
+        Raises
+        ------
+        TypeError
+            If any parameter except `predicate` is provided and is not `Iterable` of
+            `hikari.Snowflakeish`.
         """
 
         self._guild_denylist: set[hikari.Snowflake] = to_snowflake_set(
@@ -268,26 +306,29 @@ class RoleRule:
             role_allowlist,
             "role_allowlist",
         )
+        self._predicate: Callable[[hikari.Role], bool] | None = predicate
 
     def can_cache(
         self,
-        guild_id: hikari.Snowflake,
-        role_id: hikari.Snowflake,
+        role: hikari.Role,
     ) -> bool:
         """
         Return whether a role passes the rule.
         """
 
-        if guild_id in self._guild_denylist:
+        if self._predicate and not self._predicate(role):
             return False
 
-        if self._guild_allowlist and guild_id not in self._guild_allowlist:
+        if role.guild_id in self._guild_denylist:
             return False
 
-        if role_id in self._role_denylist:
+        if self._guild_allowlist and role.guild_id not in self._guild_allowlist:
             return False
 
-        if self._role_allowlist and role_id not in self._role_allowlist: # noqa: SIM103
+        if role.id in self._role_denylist:
+            return False
+
+        if self._role_allowlist and role.id not in self._role_allowlist: # noqa: SIM103
             return False
 
         return True

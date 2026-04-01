@@ -13,6 +13,7 @@ This page provides a high-level overview of changes in each release. For full de
 - Cache event dispatch exceptions no longer silent when handling.
 - Cache events dispatched via tasks rather than gathered coroutines.
 - Cache backup and restore system.
+- Custom filtering through rule `predicate`.
 - Miscellaneous bug fixes.
 
 ### 0.1.0a4 (March 16th, 2026)
