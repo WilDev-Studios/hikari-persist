@@ -111,7 +111,7 @@ async def event_listener_1(event: hikari.Event):
     guild = await cache.guilds.get(id=event.guild_id)
     print(guild)
 
-@cache.listen()
+@cache.listen(confirm=True)
 async def event_listener_2(event: hikari.Event):
     guild = await cache.guilds.get(id=event.guild_id)
     print(guild)
