@@ -12,6 +12,7 @@ from hikaripersist.impl.query import (
     RoleQuery,
 )
 from hikaripersist.rule import Rule
+from pathlib import Path
 from typing import (
     ClassVar,
     TypeVar,
@@ -583,6 +584,30 @@ class Cache:
         )
         return await self._backend.channel_update(event.thread, confirm)
 
+    async def backup(
+        self,
+        path: Path | str,
+    ) -> None:
+        """
+        Snapshot the current cache backend to a file.
+
+        Parameters
+        ----------
+        path : Path | str
+            The path to the file to write.
+
+        Raises
+        ------
+        TypeError
+            If `path` is not `Path` or `str`.
+        """
+
+        if not isinstance(path, (Path, str)):
+            error: str = "Provided path must be Path or str"
+            raise TypeError(error)
+
+        await self._backend.snapshot(Path(path))
+
     @property
     def bot(self) -> hikari.GatewayBot:
         """The bot interfaced with this cache."""
@@ -679,6 +704,30 @@ class Cache:
         """
 
         return MemberQuery(self)
+
+    async def restore(
+        self,
+        path: Path | str,
+    ) -> None:
+        """
+        Restore a cache backend from a file.
+
+        Parameters
+        ----------
+        path : Path | str
+            The path to the file to read.
+
+        Raises
+        ------
+        TypeError
+            If `path` is not `Path` or `str`.
+        """
+
+        if not isinstance(path, (Path, str)):
+            error: str = "Provided path must be Path or str"
+            raise TypeError(error)
+
+        await self._backend.restore(Path(path))
 
     @property
     def roles(self) -> RoleQuery:

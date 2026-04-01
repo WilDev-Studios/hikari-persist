@@ -124,8 +124,57 @@ class SQLiteBackend(Backend):
 
         self._ready: asyncio.Event = asyncio.Event()
 
-    async def __create_schema(self) -> None:
-        await self._connection.executescript("""
+    async def __backup(self) -> None:
+        try:
+            while True:
+                await asyncio.sleep(self._interval)
+                await self._connection.backup(self._connection_file)
+
+                logger.debug("Backup of in-memory database to file made")
+        except asyncio.CancelledError:
+            return
+
+    def __build_query(
+        self,
+        query: BaseQuery,
+    ) -> tuple[list[str], list[object]]:
+        conditions: list[str] = []
+        parameters: list[object] = []
+
+        for name, value in query.__dict__.items():
+            if value is None:
+                continue
+
+            conditions.append(f"{name.removeprefix('_')} = ?")
+
+            if isinstance(value, (
+                bool,
+                hikari.ChannelType,
+                hikari.Color,
+                hikari.GuildExplicitContentFilterLevel,
+                hikari.GuildMessageNotificationsLevel,
+                hikari.GuildMFALevel,
+                hikari.GuildNSFWLevel,
+                hikari.GuildPremiumTier,
+                hikari.GuildSystemChannelFlag,
+                hikari.GuildVerificationLevel,
+                hikari.Permissions,
+            )):
+                parameters.append(int(value))
+            elif isinstance(value, timedelta):
+                parameters.append(value.total_seconds())
+            elif isinstance(value, hikari.UnicodeEmoji):
+                parameters.append(str(value))
+            else:
+                parameters.append(value)
+
+        return conditions, parameters
+
+    async def __create_schema(
+        self,
+        db: aiosqlite.Connection,
+    ) -> None:
+        await db.executescript("""
             CREATE TABLE IF NOT EXISTS channels (
                 id                    INTEGER NOT NULL PRIMARY KEY,
                 name                  TEXT,
@@ -259,53 +308,7 @@ class SQLiteBackend(Backend):
             CREATE INDEX IF NOT EXISTS idx_members_guild ON members(guild_id);
             CREATE INDEX IF NOT EXISTS idx_roles_guild ON roles(guild_id);
         """) # noqa: E501
-        await self._connection.commit()
-
-    async def __backup(self) -> None:
-        try:
-            while True:
-                await asyncio.sleep(self._interval)
-                await self._connection.backup(self._connection_file)
-
-                logger.debug("Backup of in-memory database to file made")
-        except asyncio.CancelledError:
-            return
-
-    def __build_query(
-        self,
-        query: BaseQuery,
-    ) -> tuple[list[str], list[object]]:
-        conditions: list[str] = []
-        parameters: list[object] = []
-
-        for name, value in query.__dict__.items():
-            if value is None:
-                continue
-
-            conditions.append(f"{name.removeprefix('_')} = ?")
-
-            if isinstance(value, (
-                bool,
-                hikari.ChannelType,
-                hikari.Color,
-                hikari.GuildExplicitContentFilterLevel,
-                hikari.GuildMessageNotificationsLevel,
-                hikari.GuildMFALevel,
-                hikari.GuildNSFWLevel,
-                hikari.GuildPremiumTier,
-                hikari.GuildSystemChannelFlag,
-                hikari.GuildVerificationLevel,
-                hikari.Permissions,
-            )):
-                parameters.append(int(value))
-            elif isinstance(value, timedelta):
-                parameters.append(value.total_seconds())
-            elif isinstance(value, hikari.UnicodeEmoji):
-                parameters.append(str(value))
-            else:
-                parameters.append(value)
-
-        return conditions, parameters
+        await db.commit()
 
     async def __execute(
         self,
@@ -321,13 +324,20 @@ class SQLiteBackend(Backend):
 
         return future
 
-    async def __version_get(self) -> int:
-        async with self._connection.execute("PRAGMA user_version;") as cursor:
+    async def __version_get(
+        self,
+        db: aiosqlite.Connection,
+    ) -> int:
+        async with db.execute("PRAGMA user_version;") as cursor:
             row: aiosqlite.Row = await cursor.fetchone()
 
         return row[0]
 
-    async def __version_migrate(self, current: int) -> None:
+    async def __version_migrate(
+        self,
+        current: int,
+        db: aiosqlite.Connection,
+    ) -> None:
         if current > SQLiteBackend.VERSION:
             error: str = "Database schema newer than supported version"
             raise RuntimeError(error)
@@ -335,11 +345,18 @@ class SQLiteBackend(Backend):
         if current == 0:
             logger.debug("Database version not found; creating schemas...")
 
-            await self.__create_schema()
+            await self.__create_schema(db)
             current = SQLiteBackend.VERSION
+        #elif current < 2:
+            # migrate to V2
 
-        await self._connection.execute(f"PRAGMA user_version = {SQLiteBackend.VERSION};")
-        await self._connection.commit()
+            #if from_backup:
+                #...
+            #else:
+                #...
+
+        await db.execute(f"PRAGMA user_version = {SQLiteBackend.VERSION};")
+        await db.commit()
 
     async def __writer(self) -> None: # noqa: PLR0912
         try:
@@ -833,10 +850,10 @@ class SQLiteBackend(Backend):
 
         await self._connection.commit()
 
-        version: int | None = await self.__version_get()
+        version: int = await self.__version_get(self._connection)
 
         if version != SQLiteBackend.VERSION:
-            await self.__version_migrate(version)
+            await self.__version_migrate(version, self._connection)
 
         def writer_done(task: asyncio.Task[None]) -> None:
             if task.cancelled():
@@ -1825,6 +1842,25 @@ class SQLiteBackend(Backend):
 
         return None
 
+    async def restore(
+        self,
+        path: Path,
+    ) -> None:
+        await self._ready.wait()
+
+        logger.debug("Restoring database from %s", str(path))
+
+        backup: aiosqlite.Connection = await aiosqlite.connect(path)
+        version: int = await self.__version_get(backup)
+
+        if version != SQLiteBackend.VERSION:
+            await self.__version_migrate(version, backup)
+
+        await backup.backup(self._connection)
+        await backup.close()
+
+        logger.info("Restored database from %s", str(path))
+
     async def role_create(
         self,
         role: hikari.Role,
@@ -1940,6 +1976,45 @@ class SQLiteBackend(Backend):
             return future
 
         return None
+
+    async def snapshot(
+        self,
+        path: Path,
+    ) -> None:
+        await self._ready.wait()
+
+        logger.debug("Snapshotting database")
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp: Path = Path(str(path) + ".tmp")
+
+        backup: aiosqlite.Connection = await aiosqlite.connect(temp)
+        attempts: int = 0
+        success: bool = False
+
+        while attempts < 3: # noqa: PLR2004
+            await self._connection.backup(backup)
+
+            cursor: aiosqlite.Cursor = await backup.execute("PRAGMA integrity_check;")
+            result: aiosqlite.Row | None = await cursor.fetchone()
+            if result and result[0] == 'ok':
+                success = True
+                break
+
+            logger.debug("Snapshot failed...retrying")
+            await asyncio.sleep(0.5)
+
+            attempts += 1
+
+        await backup.close()
+
+        if not success:
+            logger.error("Database failed to snapshot")
+            return
+
+        temp.rename(path)
+
+        logger.info("Database snapshot to %s", str(path))
 
     async def startup_guild(
         self,

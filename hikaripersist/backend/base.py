@@ -15,6 +15,7 @@ if TYPE_CHECKING:
         MemberQuery,
         RoleQuery,
     )
+    from pathlib import Path
 
     import asyncio
     import hikari
@@ -342,6 +343,20 @@ class Backend(ABC):
         """
 
     @abstractmethod
+    async def restore(
+        self,
+        path: Path,
+    ) -> None:
+        """
+        Restore the backend from a backed up file.
+
+        Parameters
+        ----------
+        path : Path
+            The path to the file to restore.
+        """
+
+    @abstractmethod
     async def role_create(
         self,
         role: hikari.Role,
@@ -411,6 +426,20 @@ class Backend(ABC):
         -------
         asyncio.Future[None] | None
             If `confirm`, the returned future to wait for.
+        """
+
+    @abstractmethod
+    async def snapshot(
+        self,
+        path: Path,
+    ) -> None:
+        """
+        Back up the backend into a restorable file.
+
+        Parameters
+        ----------
+        path : Path
+            The path to the file to create as the backup.
         """
 
     @abstractmethod
