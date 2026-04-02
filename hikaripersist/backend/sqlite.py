@@ -2046,7 +2046,7 @@ class SQLiteBackend(Backend):
     ) -> asyncio.Future[None] | None:
         futures: list[asyncio.Future[None]] = []
 
-        for channel in channels:
+        for channel in channels: # TODO: Bulk update, not iterate
             future: asyncio.Future[None] | None = await self.channel_create(channel, confirm)
 
             if confirm:
@@ -2064,7 +2064,7 @@ class SQLiteBackend(Backend):
     ) -> asyncio.Future[None] | None:
         futures: list[asyncio.Future[None]] = []
 
-        for member in members:
+        for member in members: # TODO: Bulk update, not iterate
             future: asyncio.Future[None] | None = await self.member_create(member, confirm)
 
             if confirm:
@@ -2082,7 +2082,7 @@ class SQLiteBackend(Backend):
     ) -> asyncio.Future[None] | None:
         futures: list[asyncio.Future[None]] = []
 
-        for role in roles:
+        for role in roles: # TODO: Bulk update, not iterate
             future: asyncio.Future[None] | None = await self.role_create(role, confirm)
 
             if confirm:

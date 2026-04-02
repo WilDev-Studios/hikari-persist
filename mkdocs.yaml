@@ -75,6 +75,7 @@ nav:
       - ~.sqlite: pages/api/backend/sqlite.md
     - hikaripersist.cache: pages/api/cache.md
     - hikaripersist.impl:
+      - ~.event: pages/api/impl/event.md
       - ~.iterator: pages/api/impl/iterator.md
       - ~.query: pages/api/impl/query.md
     - hikaripersist.rule: pages/api/rule.md

@@ -15,6 +15,7 @@ This page provides a high-level overview of changes in each release. For full de
 - Cache backup and restore system.
 - Custom filtering through rule `predicate`.
 - `SQLiteBackend` SQL batch size now configurable.
+- New cache-related events.
 - Miscellaneous bug fixes.
 
 ### 0.1.0a4 (March 16th, 2026)
