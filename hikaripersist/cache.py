@@ -846,6 +846,62 @@ class Cache:
 
         return ChannelQuery(self)
 
+    async def clear(
+        self,
+        *,
+        channels: bool = False,
+        guilds: bool = False,
+        members: bool = False,
+        roles: bool = False,
+    ) -> None:
+        """
+        Clear the cache of specific data.
+
+        Parameters
+        ----------
+        channels : bool
+            If cache channel data should be cleared.
+        guilds : bool
+            If cache guild data should be cleared.
+        members : bool
+            If cache member data should be cleared.
+        roles : bool
+            If cache role data should be cleared.
+
+        Raises
+        ------
+        TypeError
+            If any parameter is not `bool`.
+        """
+
+        if not isinstance(channels, bool):
+            error: str = "Provided channels must be bool"
+            raise TypeError(error)
+
+        if not isinstance(guilds, bool):
+            error: str = "Provided guilds must be bool"
+            raise TypeError(error)
+
+        if not isinstance(members, bool):
+            error: str = "Provided members must be bool"
+            raise TypeError(error)
+
+        if not isinstance(roles, bool):
+            error: str = "Provided roles must be bool"
+            raise TypeError(error)
+
+        logger.debug(
+            "Attempting to clear cache: Channels=%s, Guilds=%s, Members=%s, Roles=%s",
+            channels, guilds, members, roles,
+        )
+
+        await self._backend.clear(channels, guilds, members, roles)
+
+        logger.info(
+            "Cache cleared: Channels=%s, Guilds=%s, Members=%s, Roles=%s",
+            channels, guilds, members, roles,
+        )
+
     @property
     def guilds(self) -> GuildQuery:
         """

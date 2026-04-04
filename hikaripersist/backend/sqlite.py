@@ -69,6 +69,7 @@ class SQLiteBackend(Backend):
         "_batch_size",
         "_connection",
         "_connection_file",
+        "_db_lock",
         "_filepath",
         "_interval",
         "_queue",
@@ -148,6 +149,7 @@ class SQLiteBackend(Backend):
         self._interval: int = backup_interval
 
         self._ready: asyncio.Event = asyncio.Event()
+        self._db_lock: asyncio.Lock = asyncio.Lock()
 
     async def __backup(self) -> None:
         try:
@@ -534,8 +536,6 @@ class SQLiteBackend(Backend):
         try:
             while True:
                 operation: _SQLOP = await self._queue.get()
-                await asyncio.sleep(0.001)
-
                 batch: list[_SQLOP] = [operation]
 
                 while len(batch) < self._batch_size:
@@ -546,37 +546,38 @@ class SQLiteBackend(Backend):
 
                 futures: list[asyncio.Future[None]] = []
 
-                await self._connection.execute("BEGIN")
+                async with self._db_lock:
+                    await self._connection.execute("BEGIN")
 
-                i: int = 0
-                while i < len(batch):
-                    op: _SQLOP = batch[i]
+                    i: int = 0
+                    while i < len(batch):
+                        op: _SQLOP = batch[i]
 
-                    match op.mode:
-                        case "execute":
-                            await self._connection.execute(op.sql, op.params)
-                        case "executemany":
-                            rows: list[tuple[Any, ...]] = list(op.params)
+                        match op.mode:
+                            case "execute":
+                                await self._connection.execute(op.sql, op.params)
+                            case "executemany":
+                                rows: list[tuple[Any, ...]] = list(op.params)
 
-                            j: int = i + 1
-                            while j < len(batch):
-                                nxt: _SQLOP = batch[j]
+                                j: int = i + 1
+                                while j < len(batch):
+                                    nxt: _SQLOP = batch[j]
 
-                                if nxt.mode != "executemany" or nxt.sql != op.sql:
-                                    break
+                                    if nxt.mode != "executemany" or nxt.sql != op.sql:
+                                        break
 
-                                rows.extend(nxt.params)
-                                j += 1
+                                    rows.extend(nxt.params)
+                                    j += 1
 
-                            await self._connection.executemany(op.sql, rows)
-                            i = j - 1
+                                await self._connection.executemany(op.sql, rows)
+                                i = j - 1
 
-                    if op.future:
-                        futures.append(op.future)
+                        if op.future:
+                            futures.append(op.future)
 
-                    i += 1
+                        i += 1
 
-                await self._connection.commit()
+                    await self._connection.commit()
 
                 for future in futures:
                     if future.done():
@@ -898,6 +899,30 @@ class SQLiteBackend(Backend):
             values,
             confirm,
         )
+
+    async def clear(
+        self,
+        channels: bool,
+        guilds: bool,
+        members: bool,
+        roles: bool,
+    ) -> None:
+        await self._ready.wait()
+
+        async with self._db_lock:
+            await self._connection.execute("BEGIN;")
+
+            if channels:
+                await self._connection.execute("DELETE FROM channels;")
+            if guilds:
+                await self._connection.execute("DELETE FROM guilds;")
+            if members:
+                await self._connection.execute("DELETE FROM users;")
+                await self._connection.execute("DELETE FROM members;")
+            if roles:
+                await self._connection.execute("DELETE FROM roles;")
+
+            await self._connection.commit()
 
     async def connect(self) -> None:
         logger.debug("Connecting to SQLite database at %s", self._filepath)

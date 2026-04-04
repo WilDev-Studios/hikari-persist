@@ -277,6 +277,29 @@ class Backend(ABC):
         """
 
     @abstractmethod
+    async def clear(
+        self,
+        channels: bool,
+        guilds: bool,
+        members: bool,
+        roles: bool,
+    ) -> None:
+        """
+        Clear select cache data.
+
+        Parameters
+        ----------
+        channels : bool
+            If all channels should be cleared.
+        guilds : bool
+            If all guilds should be cleared.
+        members : bool
+            If all members should be cleared.
+        roles : bool
+            If all roles should be cleared.
+        """
+
+    @abstractmethod
     async def connect(
         self,
         *args: tuple,

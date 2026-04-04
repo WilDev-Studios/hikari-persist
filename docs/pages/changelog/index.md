@@ -18,6 +18,7 @@ This page provides a high-level overview of changes in each release. For full de
 - New cache-related events.
 - Removed backend startup methods in favor of bulk methods.
 - Backend methods overloaded for type correctness and safety.
+- New cache `clear` method.
 - Miscellaneous bug fixes.
 
 !!! warning
