@@ -281,17 +281,17 @@ class Cache:
         futures: list[asyncio.Future[None]] = []
 
         cfailed: set[hikari.PermissibleGuildChannel] = set()
-        cpassed: set[hikari.PermissibleGuildChannel] = set()
+        cpassed: list[hikari.PermissibleGuildChannel] = []
 
         for channel in event.channels.values():
             if self._rule._channel.can_cache(channel):
-                cpassed.add(channel)
+                cpassed.append(channel)
                 continue
 
             cfailed.add(channel)
 
         if cpassed:
-            future: asyncio.Future[None] | None = await self._backend.startup_guild_channels(
+            future: asyncio.Future[None] | None = await self._backend.bulk_channels(
                 cpassed,
                 confirm,
             )
@@ -320,7 +320,7 @@ class Cache:
             )
 
         if self._rule._guild.can_cache(event.guild):
-            future: asyncio.Future[None] | None = await self._backend.startup_guild(
+            future: asyncio.Future[None] | None = await self._backend.guild_join(
                 event.guild,
                 confirm,
             )
@@ -356,7 +356,7 @@ class Cache:
             mfailed.add(member)
 
         if mpassed:
-            future: asyncio.Future[None] | None = await self._backend.startup_guild_members(
+            future: asyncio.Future[None] | None = await self._backend.bulk_members(
                 mpassed,
                 confirm,
             )
@@ -395,7 +395,7 @@ class Cache:
             rfailed.add(role)
 
         if rpassed:
-            future: asyncio.Future[None] | None = await self._backend.startup_guild_roles(
+            future: asyncio.Future[None] | None = await self._backend.bulk_roles(
                 rpassed,
                 confirm,
             )

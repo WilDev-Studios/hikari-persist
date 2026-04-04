@@ -1,11 +1,20 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+from abc import (
+    ABC,
+    abstractmethod,
+)
 from collections.abc import (
     AsyncIterator,
     Iterable,
+    Sequence,
 )
-from typing import Any, TYPE_CHECKING
+from typing import (
+    Any,
+    Literal,
+    overload,
+    TYPE_CHECKING,
+)
 
 if TYPE_CHECKING:
     from hikaripersist.cache import Cache
@@ -26,6 +35,142 @@ class Backend(ABC):
     """Base persistent cache backend."""
 
     _cache: Cache
+
+    @overload
+    async def bulk_channels(
+        self,
+        channels: Iterable[hikari.GuildChannel],
+        confirm: Literal[False],
+    ) -> None:
+        ...
+
+    @overload
+    async def bulk_channels(
+        self,
+        channels: Iterable[hikari.GuildChannel],
+        confirm: Literal[True],
+    ) -> asyncio.Future[None]:
+        ...
+
+    @abstractmethod
+    async def bulk_channels(
+        self,
+        channels: Sequence[hikari.GuildChannel],
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        """
+        Insert or update channels in bulk.
+
+        Parameters
+        ----------
+        channels : Sequence[hikari.GuildChannel]
+            The channels to insert or update.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
+        """
+
+    @overload
+    async def bulk_members(
+        self,
+        members: Iterable[hikari.Member],
+        confirm: Literal[False],
+    ) -> None:
+        ...
+
+    @overload
+    async def bulk_members(
+        self,
+        members: Iterable[hikari.Member],
+        confirm: Literal[True],
+    ) -> asyncio.Future[None]:
+        ...
+
+    @abstractmethod
+    async def bulk_members(
+        self,
+        members: Iterable[hikari.Member],
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        """
+        Insert or update members in bulk.
+
+        Parameters
+        ----------
+        members : Iterable[hikari.Member]
+            The members to insert or update.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
+        """
+
+    @overload
+    async def bulk_roles(
+        self,
+        roles: Iterable[hikari.Role],
+        confirm: Literal[False],
+    ) -> None:
+        ...
+
+    @overload
+    async def bulk_roles(
+        self,
+        roles: Iterable[hikari.Role],
+        confirm: Literal[True],
+    ) -> asyncio.Future[None]:
+        ...
+
+    @abstractmethod
+    async def bulk_roles(
+        self,
+        roles: Iterable[hikari.Role],
+        confirm: bool,
+    ) -> asyncio.Future[None] | None:
+        """
+        Insert or update roles in bulk.
+
+        Parameters
+        ----------
+        roles : Iterable[hikari.Role]
+            The roles to insert or update.
+        confirm : bool
+            If `True`, this method will wait until the database transaction
+            containing this operation has been committed before returning.
+            If `False`, the operation is queued and this method returns immediately.
+
+        Returns
+        -------
+        asyncio.Future[None] | None
+            If `confirm`, the returned future to wait for.
+        """
+
+    @overload
+    async def channel_create(
+        self,
+        channel: hikari.GuildChannel,
+        confirm: Literal[False],
+    ) -> None:
+        ...
+
+    @overload
+    async def channel_create(
+        self,
+        channel: hikari.GuildChannel,
+        confirm: Literal[True],
+    ) -> asyncio.Future[None]:
+        ...
 
     @abstractmethod
     async def channel_create(
@@ -51,6 +196,22 @@ class Backend(ABC):
             If `confirm`, the returned future to wait for.
         """
 
+    @overload
+    async def channel_delete(
+        self,
+        channel_id: hikari.Snowflake,
+        confirm: Literal[False],
+    ) -> None:
+        ...
+
+    @overload
+    async def channel_delete(
+        self,
+        channel_id: hikari.Snowflake,
+        confirm: Literal[True]
+    ) -> asyncio.Future[None]:
+        ...
+
     @abstractmethod
     async def channel_delete(
         self,
@@ -74,6 +235,22 @@ class Backend(ABC):
         asyncio.Future[None] | None
             If `confirm`, the returned future to wait for.
         """
+
+    @overload
+    async def channel_update(
+        self,
+        channel: hikari.GuildChannel,
+        confirm: Literal[False],
+    ) -> None:
+        ...
+
+    @overload
+    async def channel_update(
+        self,
+        channel: hikari.GuildChannel,
+        confirm: Literal[True],
+    ) -> asyncio.Future[None]:
+        ...
 
     @abstractmethod
     async def channel_update(
@@ -119,6 +296,22 @@ class Backend(ABC):
         Save state and disconnect from a backend database.
         """
 
+    @overload
+    async def guild_join(
+        self,
+        guild: hikari.GatewayGuild,
+        confirm: Literal[False],
+    ) -> None:
+        ...
+
+    @overload
+    async def guild_join(
+        self,
+        guild: hikari.GatewayGuild,
+        confirm: Literal[True],
+    ) -> asyncio.Future[None]:
+        ...
+
     @abstractmethod
     async def guild_join(
         self,
@@ -143,6 +336,22 @@ class Backend(ABC):
             If `confirm`, the returned future to wait for.
         """
 
+    @overload
+    async def guild_leave(
+        self,
+        guild_id: hikari.Snowflake,
+        confirm: Literal[False],
+    ) -> None:
+        ...
+
+    @overload
+    async def guild_leave(
+        self,
+        guild_id: hikari.Snowflake,
+        confirm: Literal[True],
+    ) -> asyncio.Future[None]:
+        ...
+
     @abstractmethod
     async def guild_leave(
         self,
@@ -166,6 +375,22 @@ class Backend(ABC):
         asyncio.Future[None] | None
             If `confirm`, the returned future to wait for.
         """
+
+    @overload
+    async def guild_update(
+        self,
+        guild: hikari.GatewayGuild,
+        confirm: Literal[False],
+    ) -> None:
+        ...
+
+    @overload
+    async def guild_update(
+        self,
+        guild: hikari.GatewayGuild,
+        confirm: Literal[True],
+    ) -> asyncio.Future[None]:
+        ...
 
     @abstractmethod
     async def guild_update(
@@ -194,15 +419,15 @@ class Backend(ABC):
     @abstractmethod
     async def iter_channels(
         self,
-        query: ChannelQuery,
+        query: ChannelQuery | None,
     ) -> AsyncIterator[hikari.GuildChannel]:
         """
         Iterate through all channels in a query.
 
         Parameters
         ----------
-        query : ChannelQuery
-            The channel query used in cache lookup.
+        query : ChannelQuery | None
+            If provided, the channel query used in cache lookup for filtration.
 
         Returns
         -------
@@ -213,15 +438,15 @@ class Backend(ABC):
     @abstractmethod
     async def iter_guilds(
         self,
-        query: GuildQuery,
+        query: GuildQuery | None,
     ) -> AsyncIterator[hikari.Guild]:
         """
         Iterate through all guilds in a query.
 
         Parameters
         ----------
-        query : GuildQuery
-            The guild query used in cache lookup.
+        query : GuildQuery | None
+            If provided, the guild query used in cache lookup for filtration.
 
         Returns
         -------
@@ -232,15 +457,15 @@ class Backend(ABC):
     @abstractmethod
     async def iter_members(
         self,
-        query: MemberQuery,
+        query: MemberQuery | None,
     ) -> AsyncIterator[hikari.Member]:
         """
         Iterate through all members in a query.
 
         Parameters
         ----------
-        query : GuildQuery
-            The member query used in cache lookup.
+        query : GuildQuery | None
+            If provided, the member query used in cache lookup for filtration.
 
         Returns
         -------
@@ -251,21 +476,37 @@ class Backend(ABC):
     @abstractmethod
     async def iter_roles(
         self,
-        query: RoleQuery,
+        query: RoleQuery | None,
     ) -> AsyncIterator[hikari.Role]:
         """
         Iterate through all roles in a query.
 
         Parameters
         ----------
-        query : RoleQuery
-            The role query used in cache lookup.
+        query : RoleQuery | None
+            If provided, the role query used in cache lookup for filtration.
 
         Returns
         -------
         AsyncIterator[hikari.Role]
             The async iterator containing the queried roles.
         """
+
+    @overload
+    async def member_create(
+        self,
+        member: hikari.Member,
+        confirm: Literal[False],
+    ) -> None:
+        ...
+
+    @overload
+    async def member_create(
+        self,
+        member: hikari.Member,
+        confirm: Literal[True],
+    ) -> asyncio.Future[None]:
+        ...
 
     @abstractmethod
     async def member_create(
@@ -290,6 +531,24 @@ class Backend(ABC):
         asyncio.Future[None] | None
             If `confirm`, the returned future to wait for.
         """
+
+    @overload
+    async def member_delete(
+        self,
+        user_id: hikari.Snowflake,
+        guild_id: hikari.Snowflake,
+        confirm: Literal[False],
+    ) -> None:
+        ...
+
+    @overload
+    async def member_delete(
+        self,
+        user_id: hikari.Snowflake,
+        guild_id: hikari.Snowflake,
+        confirm: Literal[True],
+    ) -> asyncio.Future[None]:
+        ...
 
     @abstractmethod
     async def member_delete(
@@ -317,6 +576,22 @@ class Backend(ABC):
         asyncio.Future[None] | None
             If `confirm`, the returned future to wait for.
         """
+
+    @overload
+    async def member_update(
+        self,
+        member: hikari.Member,
+        confirm: Literal[False],
+    ) -> None:
+        ...
+
+    @overload
+    async def member_update(
+        self,
+        member: hikari.Member,
+        confirm: Literal[True],
+    ) -> asyncio.Future[None]:
+        ...
 
     @abstractmethod
     async def member_update(
@@ -356,6 +631,22 @@ class Backend(ABC):
             The path to the file to restore.
         """
 
+    @overload
+    async def role_create(
+        self,
+        role: hikari.Role,
+        confirm: Literal[False],
+    ) -> None:
+        ...
+
+    @overload
+    async def role_create(
+        self,
+        role: hikari.Role,
+        confirm: Literal[True],
+    ) -> asyncio.Future[None]:
+        ...
+
     @abstractmethod
     async def role_create(
         self,
@@ -380,6 +671,22 @@ class Backend(ABC):
             If `confirm`, the returned future to wait for.
         """
 
+    @overload
+    async def role_delete(
+        self,
+        role_id: hikari.Snowflake,
+        confirm: Literal[False],
+    ) -> None:
+        ...
+
+    @overload
+    async def role_delete(
+        self,
+        role_id: hikari.Snowflake,
+        confirm: Literal[True],
+    ) -> asyncio.Future[None]:
+        ...
+
     @abstractmethod
     async def role_delete(
         self,
@@ -403,6 +710,22 @@ class Backend(ABC):
         asyncio.Future[None] | None
             If `confirm`, the returned future to wait for.
         """
+
+    @overload
+    async def role_update(
+        self,
+        role: hikari.Role,
+        confirm: Literal[False],
+    ) -> None:
+        ...
+
+    @overload
+    async def role_update(
+        self,
+        role: hikari.Role,
+        confirm: Literal[True],
+    ) -> asyncio.Future[None]:
+        ...
 
     @abstractmethod
     async def role_update(
@@ -440,100 +763,4 @@ class Backend(ABC):
         ----------
         path : Path
             The path to the file to create as the backup.
-        """
-
-    @abstractmethod
-    async def startup_guild(
-        self,
-        guild: hikari.GatewayGuild,
-        confirm: bool,
-    ) -> asyncio.Future[None] | None:
-        """
-        Cache a guild on startup.
-
-        Parameters
-        ----------
-        guild : hikari.GatewayGuild
-            The guild to cache.
-        confirm : bool
-            If `True`, this method will wait until the database transaction
-            containing this operation has been committed before returning.
-            If `False`, the operation is queued and this method returns immediately.
-
-        Returns
-        -------
-        asyncio.Future[None] | None
-            If `confirm`, the returned future to wait for.
-        """
-
-    @abstractmethod
-    async def startup_guild_channels(
-        self,
-        channels: Iterable[hikari.GuildChannel],
-        confirm: bool,
-    ) -> asyncio.Future[None] | None:
-        """
-        Cache channels on startup.
-
-        Parameters
-        ----------
-        channels : Iterable[hikari.GuildChannel]
-            The channels to cache.
-        confirm : bool
-            If `True`, this method will wait until the database transaction
-            containing this operation has been committed before returning.
-            If `False`, the operation is queued and this method returns immediately.
-
-        Returns
-        -------
-        asyncio.Future[None] | None
-            If `confirm`, the returned future to wait for.
-        """
-
-    @abstractmethod
-    async def startup_guild_members(
-        self,
-        members: Iterable[hikari.Member],
-        confirm: bool,
-    ) -> asyncio.Future[None] | None:
-        """
-        Cache members on startup.
-
-        Parameters
-        ----------
-        members : Iterable[hikari.Member]
-            The members to cache.
-        confirm : bool
-            If `True`, this method will wait until the database transaction
-            containing this operation has been committed before returning.
-            If `False`, the operation is queued and this method returns immediately.
-
-        Returns
-        -------
-        asyncio.Future[None] | None
-            If `confirm`, the returned future to wait for.
-        """
-
-    @abstractmethod
-    async def startup_guild_roles(
-        self,
-        roles: Iterable[hikari.Role],
-        confirm: bool,
-    ) -> asyncio.Future[None] | None:
-        """
-        Cache roles on startup.
-
-        Parameters
-        ----------
-        roles : Iterable[hikari.Role]
-            The roles to cache.
-        confirm : bool
-            If `True`, this method will wait until the database transaction
-            containing this operation has been committed before returning.
-            If `False`, the operation is queued and this method returns immediately.
-
-        Returns
-        -------
-        asyncio.Future[None] | None
-            If `confirm`, the returned future to wait for.
         """
