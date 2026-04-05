@@ -641,6 +641,14 @@ class Backend(ABC):
         """
 
     @abstractmethod
+    async def prune(
+        self,
+    ) -> None:
+        """
+        Prune all objects in cache that weren't updated on startup.
+        """
+
+    @abstractmethod
     async def restore(
         self,
         path: Path,

@@ -19,7 +19,8 @@ This page provides a high-level overview of changes in each release. For full de
 - Removed backend startup methods in favor of bulk methods.
 - Backend methods overloaded for type correctness and safety.
 - New cache `clear` method.
-- Miscellaneous bug fixes.
+- Objects automatically deleted on startup if not synced with Discord.
+- Miscellaneous bug fixes and changes.
 
 !!! warning
     This release contains breaking changes.

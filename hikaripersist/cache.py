@@ -36,10 +36,12 @@ from typing import (
 )
 
 import asyncio
+import contextlib
 import hikari
 import inspect
 import logging
 import sys
+import time
 import traceback
 
 __all__ = ("Cache",)
@@ -136,8 +138,13 @@ class Cache:
         for event in self._handlers:
             self._bot.subscribe(event, self.__event)
 
+        self._guilds: set[hikari.Snowflake] = {}
+        self._sync: int = int(time.time() * 1000)
+
     async def __bot_starting(self, _: hikari.StartingEvent, __: bool) -> None:
         await self._backend.connect()
+
+        self._guilds = {guild.id async for guild in self._bot.rest.fetch_my_guilds()}
 
     async def __bot_stopping(self, _: hikari.StoppingEvent, __: bool) -> None:
         await self._backend.disconnect()
@@ -422,6 +429,12 @@ class Cache:
                 event.guild_id,
                 len(rpassed),
             )
+
+        with contextlib.suppress(KeyError):
+            self._guilds.remove(event.guild_id)
+
+        if len(self._guilds) == 0:
+            await self._backend.prune()
 
         if futures:
             return await asyncio.gather(*futures, return_exceptions=True)
