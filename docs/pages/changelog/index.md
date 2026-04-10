@@ -7,7 +7,7 @@ This page provides a high-level overview of changes in each release. For full de
 
 ## 0.1.0 (In Progress)
 
-### 0.1.0a5 (STAGING)
+### 0.1.0a5 (April 9th, 2026)
 
 - New query `get` methods with opt-in REST hydration.
 - Cache event dispatch exceptions no longer silent when handling.
