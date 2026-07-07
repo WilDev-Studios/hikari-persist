@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 import logging
 
+
 __all__ = ()
 
 logger: logging.Logger = logging.getLogger("persist.query")

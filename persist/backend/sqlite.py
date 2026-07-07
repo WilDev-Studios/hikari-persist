@@ -40,6 +40,7 @@ if TYPE_CHECKING:
         RoleQuery,
     )
 
+
 __all__ = ("SQLiteBackend",)
 
 logger: logging.Logger = logging.getLogger("persist.sqlite")
@@ -96,47 +97,20 @@ class SQLiteBackend(Backend):
             If `> 0`, the backend should use an in-memory database for performance
             while using the given filepath as a backup-and-restore database for persistence.
             This interval configures how often the in-memory database backs up into the file in
-            seconds.
+            seconds. Must be `>= 0`.
         batch_size : int
             The size of each batched SQL execution. Iterated reads and writes will occur in batches
-            of this amount.
+            of this amount. Must be `>= 1`.
 
         Raises
         ------
         ImportError
             If `aiosqlite` is not installed.
-        TypeError
-            - If `filepath` is not `Path` or `str`.
-            - If `backup_interval` is not `int`.
-            - If `batch_size` is not `int`.
-        ValueError
-            - If `backup_interval` is less than `0`.
-            - If `batch_size` is less than `1`.
         """
 
         if not INSTALLED:
             error: str = "SQLiteBackend requires `aiosqlite` to be installed"
             raise ImportError(error)
-
-        if not isinstance(filepath, (Path, str)):
-            error: str = "Provided filepath must be `Path` or `str`"
-            raise TypeError(error)
-
-        if not isinstance(backup_interval, int):
-            error: str = "Provided backup interval must be `int`"
-            raise TypeError(error)
-
-        if not isinstance(batch_size, int):
-            error: str = "Provided batch size must be `int`"
-            raise TypeError(error)
-
-        if backup_interval < 0:
-            error: str = "Provided backup interval must be 0 or greater"
-            raise ValueError(error)
-
-        if batch_size < 1:
-            error: str = "Provided batch size must be 1 or greater"
-            raise ValueError(error)
 
         self._connection: aiosqlite.Connection | None = None
         self._filepath: Path | str = filepath

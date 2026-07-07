@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import hikari
 
+
 __all__ = (
     "BulkChannelEvent",
     "BulkMemberEvent",

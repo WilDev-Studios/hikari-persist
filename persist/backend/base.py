@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     import asyncio
     import hikari
 
+
 __all__ = ("Backend",)
 
 class Backend(ABC):

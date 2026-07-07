@@ -44,6 +44,7 @@ import sys
 import time
 import traceback
 
+
 __all__ = ("Cache",)
 
 EventT = TypeVar("EventT", bound=hikari.Event)
@@ -78,27 +79,11 @@ class Cache:
         ------
         RuntimeError
             If an instance of `Cache` already exists.
-        TypeError
-            - If `bot` is not `hikari.GatewayBot`.
-            - If `backend` is not `Backend`.
-            - If `rule` is provided and is not `Rule`.
         """
 
         if Cache.__instance:
             error: str = "Only one Cache instance can exist at any time"
             raise RuntimeError(error)
-
-        if not isinstance(bot, hikari.GatewayBot):
-            error: str = "Provided bot must be hikari.GatewayBot"
-            raise TypeError(error)
-
-        if not isinstance(backend, Backend):
-            error: str = "Provided backend must be Backend"
-            raise TypeError(error)
-
-        if rule is not None and not isinstance(rule, Rule):
-            error: str = "Provided rule must be Rule"
-            raise TypeError(error)
 
         Cache.__instance = self
 
@@ -833,16 +818,7 @@ class Cache:
         ----------
         path : Path | str
             The path to the file to write.
-
-        Raises
-        ------
-        TypeError
-            If `path` is not `Path` or `str`.
         """
-
-        if not isinstance(path, (Path, str)):
-            error: str = "Provided path must be Path or str"
-            raise TypeError(error)
 
         await self._backend.snapshot(Path(path))
 
@@ -880,28 +856,7 @@ class Cache:
             If cache member data should be cleared.
         roles : bool
             If cache role data should be cleared.
-
-        Raises
-        ------
-        TypeError
-            If any parameter is not `bool`.
         """
-
-        if not isinstance(channels, bool):
-            error: str = "Provided channels must be bool"
-            raise TypeError(error)
-
-        if not isinstance(guilds, bool):
-            error: str = "Provided guilds must be bool"
-            raise TypeError(error)
-
-        if not isinstance(members, bool):
-            error: str = "Provided members must be bool"
-            raise TypeError(error)
-
-        if not isinstance(roles, bool):
-            error: str = "Provided roles must be bool"
-            raise TypeError(error)
 
         logger.debug(
             "Attempting to clear cache: Channels=%s, Guilds=%s, Members=%s, Roles=%s",
@@ -1010,16 +965,7 @@ class Cache:
         ----------
         path : Path | str
             The path to the file to read.
-
-        Raises
-        ------
-        TypeError
-            If `path` is not `Path` or `str`.
         """
-
-        if not isinstance(path, (Path, str)):
-            error: str = "Provided path must be Path or str"
-            raise TypeError(error)
 
         await self._backend.restore(Path(path))
 
