@@ -17,8 +17,8 @@ from typing import (
 )
 
 if TYPE_CHECKING:
-    from hikaripersist.cache import Cache
-    from hikaripersist.impl.query import (
+    from ..cache import Cache
+    from ..impl.query import (
         ChannelQuery,
         GuildQuery,
         MemberQuery,

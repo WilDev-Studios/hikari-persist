@@ -36,12 +36,12 @@ __all__ = (
     "SQLiteBackend",
 )
 
-from hikaripersist.backend import (
+from .backend import (
     Backend,
     SQLiteBackend,
 )
-from hikaripersist.cache import Cache
-from hikaripersist.impl import (
+from .cache import Cache
+from .impl import (
     BulkChannelEvent,
     BulkMemberEvent,
     BulkRoleEvent,
@@ -61,7 +61,7 @@ from hikaripersist.impl import (
     RoleRemoveEvent,
     RoleUpdateEvent,
 )
-from hikaripersist.rule import (
+from .rule import (
     ChannelRule,
     GuildRule,
     MemberRule,

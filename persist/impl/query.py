@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hikaripersist.impl.iterator import CacheIterator
+from .iterator import CacheIterator
 from typing import (
     Literal,
     overload,
@@ -10,7 +10,7 @@ from typing import (
 
 if TYPE_CHECKING:
     from datetime import timedelta
-    from hikaripersist.cache import Cache
+    from ..cache import Cache
 
     import hikari
 

@@ -4,8 +4,8 @@ from collections.abc import (
     Awaitable,
     Callable,
 )
-from hikaripersist.backend import Backend
-from hikaripersist.impl.event import (
+from .backend import Backend
+from .impl.event import (
     BulkChannelEvent,
     BulkMemberEvent,
     BulkRoleEvent,
@@ -22,13 +22,13 @@ from hikaripersist.impl.event import (
     RoleRemoveEvent,
     RoleUpdateEvent,
 )
-from hikaripersist.impl.query import (
+from .impl.query import (
     ChannelQuery,
     GuildQuery,
     MemberQuery,
     RoleQuery,
 )
-from hikaripersist.rule import Rule
+from .rule import Rule
 from pathlib import Path
 from typing import (
     ClassVar,

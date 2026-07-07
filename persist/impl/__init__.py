@@ -19,7 +19,7 @@ __all__ = (
     "RoleUpdateEvent",
 )
 
-from hikaripersist.impl.event import (
+from .event import (
     BulkChannelEvent,
     BulkMemberEvent,
     BulkRoleEvent,
@@ -37,7 +37,7 @@ from hikaripersist.impl.event import (
     RoleRemoveEvent,
     RoleUpdateEvent,
 )
-from hikaripersist.impl.iterator import (
+from .iterator import (
     CacheIterator,
     CacheIteratorStep,
 )

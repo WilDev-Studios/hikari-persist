@@ -13,7 +13,7 @@ from datetime import (
     timezone,
 )
 from hikari import users
-from hikaripersist.backend.base import Backend
+from .base import Backend
 from pathlib import Path
 from typing import (
     Any,
@@ -32,7 +32,7 @@ except ImportError:
     INSTALLED: bool = False
 
 if TYPE_CHECKING:
-    from hikaripersist.impl.query import (
+    from ..impl.query import (
         BaseQuery,
         ChannelQuery,
         GuildQuery,
