@@ -58,7 +58,7 @@ Create a basic cache bot:
 
 ```python
 import hikari
-import hikaripersist as persist
+import persist
 
 bot = hikari.GatewayBot("TOKEN")
 cache = persist.Cache(bot, persist.SQLiteBackend("cache.db"))
