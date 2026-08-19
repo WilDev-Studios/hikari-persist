@@ -6,18 +6,20 @@ from collections.abc import (
     Sequence,
 )
 from contextlib import suppress
-from dataclasses import dataclass
 from datetime import (
     datetime,
     timedelta,
     timezone,
 )
 from hikari import users
-from .base import Backend
+from .base import (
+    Backend,
+    SQLBackend,
+    SQLOP,
+)
 from pathlib import Path
 from typing import (
     Any,
-    Literal,
     TYPE_CHECKING,
 )
 
@@ -33,7 +35,6 @@ except ImportError:
 
 if TYPE_CHECKING:
     from ..impl.query import (
-        BaseQuery,
         ChannelQuery,
         GuildQuery,
         MemberQuery,
@@ -45,14 +46,7 @@ __all__ = ("SQLiteBackend",)
 
 logger: logging.Logger = logging.getLogger("persist.sqlite")
 
-@dataclass(frozen=True, slots=True)
-class _SQLOP:
-    sql: str | list[str]
-    mode: Literal["execute", "executemany", "multi"]
-    params: tuple[Any, ...] | list[tuple[Any, ...]]
-    future: asyncio.Future[None] | None
-
-class SQLiteBackend(Backend):
+class SQLiteBackend(SQLBackend, Backend):
     """Use `SQLite` as the persistent cache backend."""
 
     VERSION: int = 1
@@ -112,18 +106,17 @@ class SQLiteBackend(Backend):
             error: str = "SQLiteBackend requires `aiosqlite` to be installed"
             raise ImportError(error)
 
+        super().__init__(batch_size)
+
         self._connection: aiosqlite.Connection | None = None
         self._filepath: Path | str = filepath
-        self._batch_size: int = batch_size
 
         self._writer: asyncio.Task[None] | None = None
-        self._queue: asyncio.Queue[_SQLOP] = asyncio.Queue()
 
         self._connection_file: aiosqlite.Connection | None = None
         self._backup: asyncio.Task[None] | None = None
         self._interval: int = backup_interval
 
-        self._ready: asyncio.Event = asyncio.Event()
         self._db_lock: asyncio.Lock = asyncio.Lock()
 
     async def __backup(self) -> None:
@@ -135,42 +128,6 @@ class SQLiteBackend(Backend):
                 logger.debug("Backup of in-memory database to file made")
         except asyncio.CancelledError:
             return
-
-    def __build_query(
-        self,
-        query: BaseQuery,
-    ) -> tuple[list[str], list[object]]:
-        conditions: list[str] = []
-        parameters: list[object] = []
-
-        for name, value in query.__dict__.items():
-            if value is None:
-                continue
-
-            conditions.append(f"{name.removeprefix('_')} = ?")
-
-            if isinstance(value, (
-                bool,
-                hikari.ChannelType,
-                hikari.Color,
-                hikari.GuildExplicitContentFilterLevel,
-                hikari.GuildMessageNotificationsLevel,
-                hikari.GuildMFALevel,
-                hikari.GuildNSFWLevel,
-                hikari.GuildPremiumTier,
-                hikari.GuildSystemChannelFlag,
-                hikari.GuildVerificationLevel,
-                hikari.Permissions,
-            )):
-                parameters.append(int(value))
-            elif isinstance(value, timedelta):
-                parameters.append(value.total_seconds())
-            elif isinstance(value, hikari.UnicodeEmoji):
-                parameters.append(str(value))
-            else:
-                parameters.append(value)
-
-        return conditions, parameters
 
     async def __create_schema(
         self,
@@ -323,7 +280,7 @@ class SQLiteBackend(Backend):
         await db.commit()
 
     async def __drain(self) -> None: # noqa: PLR0912
-        remaining: list[_SQLOP] = []
+        remaining: list[SQLOP] = []
         while True:
             try:
                 remaining.append(self._queue.get_nowait())
@@ -338,12 +295,12 @@ class SQLiteBackend(Backend):
                 for op in remaining:
                     match op.mode:
                         case "execute":
-                            await self._connection.execute(op.sql, op.params)
+                            await self._connection.execute(op.sql, op.parameters)
                         case "executemany":
-                            await self._connection.executemany(op.sql, op.params)
+                            await self._connection.executemany(op.sql, op.parameters)
                         case "multi":
-                            for stmt, p in zip(op.sql, op.params, strict=True):
-                                await self._connection.execute(stmt, p)
+                            for stmt, parameters in zip(op.sql, op.parameters, strict=True):
+                                await self._connection.execute(stmt, parameters)
 
                     if op.future:
                         futures.append(op.future)
@@ -364,183 +321,6 @@ class SQLiteBackend(Backend):
                     continue
 
                 future.set_result(None)
-
-    async def __execute(
-        self,
-        execute: str,
-        values: tuple[Any],
-        confirm: bool = False,
-    ) -> asyncio.Future[None] | None:
-        future: asyncio.Future[None] | None = None
-        if confirm:
-            future = asyncio.get_running_loop().create_future()
-
-        await self._queue.put(_SQLOP(execute, "execute", values, future))
-
-        return future
-
-    async def __executemany(
-        self,
-        execute: str,
-        values: list[tuple[Any, ...]],
-        confirm: bool = False,
-    ) -> asyncio.Future[None] | None:
-        future: asyncio.Future[None] | None = None
-        if confirm:
-            future = asyncio.get_running_loop().create_future()
-
-        await self._queue.put(_SQLOP(execute, "executemany", values, future))
-
-        return future
-
-    async def __executemulti(
-        self,
-        queries: Sequence[tuple[str, tuple[Any, ...]]],
-        confirm: bool = False,
-    ) -> asyncio.Future[None] | None:
-        future: asyncio.Future[None] | None = None
-        if confirm:
-            future = asyncio.get_running_loop().create_future()
-
-        sqls: list[str] = [sql for sql, _ in queries]
-        params: list[tuple[Any, ...]] = [param for _, param in queries]
-
-        await self._queue.put(_SQLOP(sqls, "multi", params, future))
-        return future
-
-    def __serialize_channel(
-        self,
-        channel: hikari.GuildChannel,
-    ) -> tuple[tuple[str, ...], tuple[Any, ...]]:
-        values: dict[str, Any] = {
-            "id": channel.id,
-            "_sync": self._cache._sync,
-            "name": channel.name,
-            "type": int(channel.type),
-            "guild_id": channel.guild_id,
-            "parent_id": channel.parent_id,
-            "position": None,
-            "is_nsfw": None,
-            "permission_overwrites": None,
-            "topic": None,
-            "last_message_id": None,
-            "rate_limit_per_user": None,
-            "last_pin_timestamp": None,
-            "default_auto_archive_duration": None,
-            "bitrate": None,
-            "region": None,
-            "user_limit": None,
-            "video_quality_mode": None,
-            "approximate_message_count": None,
-            "approximate_member_count": None,
-            "member_thread_id": None,
-            "member_user_id": None,
-            "member_joined_at": None,
-            "member_flags": None,
-            "owner_id": None,
-            "metadata_is_archived": None,
-            "metadata_is_invitable": None,
-            "metadata_auto_archive_duration": None,
-            "metadata_archive_timestamp": None,
-            "metadata_is_locked": None,
-            "metadata_created_at": None,
-            "applied_tag_ids": None,
-            "flags": None,
-            "last_thread_id": None,
-            "default_thread_rate_limit_per_user": None,
-            "available_tags": None,
-            "default_sort_order": None,
-            "default_layout": None,
-            "default_reaction_emoji_id": None,
-            "default_reaction_emoji_name": None,
-        }
-
-        if isinstance(channel, hikari.PermissibleGuildChannel):
-            values["position"] = channel.position
-            values["is_nsfw"] = int(channel.is_nsfw)
-            values["permission_overwrites"] = '|'.join(
-                f"{overwrite.id}:{int(overwrite.type)}:{int(overwrite.allow)}:{int(overwrite.deny)}"
-                for overwrite in channel.permission_overwrites.values()
-            )
-
-        if isinstance(channel, (hikari.GuildTextChannel, hikari.GuildNewsChannel)):
-            values["topic"] = channel.topic
-            values["last_message_id"] = channel.last_message_id
-            values["last_pin_timestamp"] = channel.last_pin_timestamp.astimezone(
-                timezone.utc,
-            ).timestamp() if channel.last_pin_timestamp else None
-            values[
-                "default_auto_archive_duration"
-            ] = channel.default_auto_archive_duration.total_seconds()
-
-            if isinstance(channel, hikari.GuildTextChannel):
-                values["rate_limit_per_user"] = channel.rate_limit_per_user.total_seconds()
-        elif isinstance(channel, (hikari.GuildVoiceChannel, hikari.GuildStageChannel)):
-            values["bitrate"] = channel.bitrate
-            values["region"] = channel.region
-            values["user_limit"] = channel.user_limit
-            values["video_quality_mode"] = int(channel.video_quality_mode)
-            values["last_message_id"] = channel.last_message_id
-        elif isinstance(channel, (
-            hikari.GuildNewsThread,
-            hikari.GuildPublicThread,
-            hikari.GuildPrivateThread,
-        )):
-            values["last_message_id"] = channel.last_message_id
-            values["last_pin_timestamp"] = channel.last_pin_timestamp.astimezone(
-                timezone.utc,
-            ).timestamp() if channel.last_pin_timestamp else None
-            values["rate_limit_per_user"] = channel.rate_limit_per_user.total_seconds()
-            values["approximate_message_count"] = channel.approximate_message_count
-            values["approximate_member_count"] = channel.approximate_member_count
-            values["member_thread_id"] = channel.member.thread_id if channel.member else None
-            values["member_user_id"] = channel.member.user_id if channel.member else None
-            values["member_joined_at"] = channel.member.joined_at.astimezone(
-                timezone.utc
-            ).timestamp() if channel.member else None
-            values["member_flags"] = channel.member.flags if channel.member else None
-            values["owner_id"] = channel.owner_id
-            values["metadata_is_archived"] = int(channel.metadata.is_archived)
-            values["metadata_is_invitable"] = int(channel.metadata.is_invitable)
-            values[
-                "metadata_auto_archive_duration"
-            ] = channel.metadata.auto_archive_duration.total_seconds()
-            values["metadata_archive_timestamp"] = channel.metadata.archive_timestamp.astimezone(
-                timezone.utc,
-            ).timestamp()
-            values["metadata_is_locked"] = int(channel.metadata.is_locked)
-            values["metadata_created_at"] = channel.metadata.created_at.astimezone(
-                timezone.utc,
-            ).timestamp() if channel.metadata.created_at else None
-
-            if isinstance(channel, hikari.GuildPublicThread):
-                values["applied_tag_ids"] = ','.join(
-                    channel.applied_tag_ids,
-                ) if channel.applied_tag_ids else None
-                values["flags"] = int(channel.flags)
-        elif isinstance(channel, (hikari.GuildForumChannel, hikari.GuildMediaChannel)):
-            values["topic"] = channel.topic
-            values["last_thread_id"] = channel.last_thread_id
-            values["rate_limit_per_user"] = channel.rate_limit_per_user.total_seconds()
-            values[
-                "default_thread_rate_limit_per_user"
-            ] = channel.default_thread_rate_limit_per_user.total_seconds()
-            values[
-                "default_auto_archive_duration"
-            ] = channel.default_auto_archive_duration.total_seconds()
-            values["flags"] = int(channel.flags)
-            values["available_tags"] = '|'.join(
-                f"{tag.id}:{tag.name}:{int(tag.moderated)}:{tag.emoji_id if tag.emoji_id else -1}"
-                for tag in channel.available_tags
-            ) if channel.available_tags else None
-            values["default_sort_order"] = int(channel.default_sort_order)
-            values["default_layout"] = int(channel.default_layout)
-            values["default_reaction_emoji_id"] = channel.default_reaction_emoji_id
-            values["default_reaction_emoji_name"] = str(
-                channel.default_reaction_emoji_name,
-            ) if channel.default_reaction_emoji_name else None
-
-        return tuple(values.keys()), tuple(values.values())
 
     async def __version_get(
         self,
@@ -579,8 +359,8 @@ class SQLiteBackend(Backend):
     async def __writer(self) -> None: # noqa: PLR0912
         try:
             while True:
-                operation: _SQLOP = await self._queue.get()
-                batch: list[_SQLOP] = [operation]
+                operation: SQLOP = await self._queue.get()
+                batch: list[SQLOP] = [operation]
 
                 while len(batch) < self._batch_size:
                     try:
@@ -598,29 +378,29 @@ class SQLiteBackend(Backend):
 
                         i: int = 0
                         while i < len(batch):
-                            op: _SQLOP = batch[i]
+                            op: SQLOP = batch[i]
 
                             match op.mode:
                                 case "execute":
-                                    await self._connection.execute(op.sql, op.params)
+                                    await self._connection.execute(op.sql, op.parameters)
                                 case "executemany":
-                                    rows: list[tuple[Any, ...]] = list(op.params)
+                                    rows: list[tuple[Any, ...]] = list(op.parameters)
 
                                     j: int = i + 1
                                     while j < len(batch):
-                                        nxt: _SQLOP = batch[j]
+                                        nxt: SQLOP = batch[j]
 
                                         if nxt.mode != "executemany" or nxt.sql != op.sql:
                                             break
 
-                                        rows.extend(nxt.params)
+                                        rows.extend(nxt.parameters)
                                         j += 1
 
                                     await self._connection.executemany(op.sql, rows)
                                     i = j - 1
                                 case "multi":
-                                    for stmt, p in zip(op.sql, op.params, strict=True):
-                                        await self._connection.execute(stmt, p)
+                                    for stmt, parameters in zip(op.sql, op.parameters, strict=True):
+                                        await self._connection.execute(stmt, parameters)
 
                             i += 1
 
@@ -659,10 +439,10 @@ class SQLiteBackend(Backend):
         if len(channels) == 1:
             return await self.channel_create(channels[0], confirm)
 
-        rows: list[tuple[Any, ...]] = [self.__serialize_channel(c)[1] for c in channels]
-        fields, _ = self.__serialize_channel(channels[0])
+        rows: list[tuple[Any, ...]] = [self._serialize_channel(c)[1] for c in channels]
+        fields, _ = self._serialize_channel(channels[0])
 
-        return await self.__executemany(
+        return await self._executemany(
             f"""
             INSERT OR REPLACE INTO channels
             ({', '.join(fields)})
@@ -740,7 +520,7 @@ class SQLiteBackend(Backend):
         futures: list[asyncio.Future[None]] = []
 
         if members_values:
-            future: asyncio.Future[None] | None = await self.__executemany(
+            future: asyncio.Future[None] | None = await self._executemany(
                 """
                 INSERT INTO members (
                     id,
@@ -780,7 +560,7 @@ class SQLiteBackend(Backend):
                 futures.append(future)
 
         if users_values:
-            future: asyncio.Future[None] | None = await self.__executemany(
+            future: asyncio.Future[None] | None = await self._executemany(
                 """
                 INSERT INTO users (
                     id,
@@ -870,7 +650,7 @@ class SQLiteBackend(Backend):
         if not values:
             return None
 
-        future: asyncio.Future[None] | None = await self.__executemany(
+        future: asyncio.Future[None] | None = await self._executemany(
             """
             INSERT INTO roles
             (
@@ -929,9 +709,9 @@ class SQLiteBackend(Backend):
     ) -> asyncio.Future[None] | None:
         await self._ready.wait()
 
-        fields, values = self.__serialize_channel(channel)
+        fields, values = self._serialize_channel(channel)
 
-        return await self.__execute(
+        return await self._execute(
             f"""
                 INSERT OR REPLACE INTO channels
                 ({', '.join(fields)})
@@ -947,7 +727,7 @@ class SQLiteBackend(Backend):
         confirm: bool,
     ) -> asyncio.Future[None] | None:
         await self._ready.wait()
-        return await self.__execute(
+        return await self._execute(
             "DELETE FROM channels WHERE id = ?;",
             (channel_id,),
             confirm,
@@ -960,10 +740,10 @@ class SQLiteBackend(Backend):
     ) -> asyncio.Future[None] | None:
         await self._ready.wait()
 
-        fields, values = self.__serialize_channel(channel)
+        fields, values = self._serialize_channel(channel)
         values = (*values, channel.id)
 
-        return await self.__execute(
+        return await self._execute(
             f"UPDATE channels SET {', '.join(f'{f} = ?' for f in fields)} WHERE id = ?;",
             values,
             confirm,
@@ -1086,7 +866,7 @@ class SQLiteBackend(Backend):
     ) -> asyncio.Future[None] | None:
         await self._ready.wait()
 
-        future: asyncio.Future[None] | None = await self.__execute(
+        future: asyncio.Future[None] | None = await self._execute(
             """
                 INSERT OR REPLACE INTO guilds
                 (
@@ -1183,7 +963,7 @@ class SQLiteBackend(Backend):
     ) -> asyncio.Future[None] | None:
         await self._ready.wait()
 
-        future: asyncio.Future[None] | None = await self.__execute(
+        future: asyncio.Future[None] | None = await self._execute(
             "DELETE FROM guilds WHERE id = ?;",
             (guild_id,),
             confirm,
@@ -1201,7 +981,7 @@ class SQLiteBackend(Backend):
     ) -> asyncio.Future[None] | None:
         await self._ready.wait()
 
-        future: asyncio.Future[None] | None = await self.__execute(
+        future: asyncio.Future[None] | None = await self._execute(
             """
                 UPDATE guilds SET
                     _sync = ?,
@@ -1291,7 +1071,7 @@ class SQLiteBackend(Backend):
         sql: str = "SELECT * FROM channels"
 
         if query:
-            conditions, params = self.__build_query(query)
+            conditions, params = self._build_query(query)
 
             if conditions:
                 sql += " WHERE " + " AND ".join(conditions)
@@ -1580,7 +1360,7 @@ class SQLiteBackend(Backend):
         sql: str = "SELECT * FROM guilds"
 
         if query:
-            conditions, params = self.__build_query(query)
+            conditions, params = self._build_query(query)
 
             if conditions:
                 sql += " WHERE " + " AND ".join(conditions)
@@ -1648,7 +1428,7 @@ class SQLiteBackend(Backend):
         sql: str = "SELECT * FROM members"
 
         if query:
-            conditions, params = self.__build_query(query)
+            conditions, params = self._build_query(query)
 
             if conditions:
                 sql += " WHERE " + " AND ".join(conditions)
@@ -1746,7 +1526,7 @@ class SQLiteBackend(Backend):
         sql: str = "SELECT * FROM roles"
 
         if query:
-            conditions, params = self.__build_query(query)
+            conditions, params = self._build_query(query)
 
             if conditions:
                 sql += " WHERE " + " AND ".join(conditions)
@@ -1791,7 +1571,7 @@ class SQLiteBackend(Backend):
 
         comm_disabled: datetime | None = member.raw_communication_disabled_until
 
-        await self.__executemulti(
+        await self._executemulti(
             (
                 (
                     """
@@ -1907,7 +1687,7 @@ class SQLiteBackend(Backend):
     ) -> asyncio.Future[None] | None:
         await self._ready.wait()
 
-        return await self.__executemulti(
+        return await self._executemulti(
             (
                 (
                     "DELETE FROM members WHERE id = ? AND guild_id = ?;",
@@ -1931,7 +1711,7 @@ class SQLiteBackend(Backend):
 
         comm_disabled: datetime | None = member.raw_communication_disabled_until
 
-        return await self.__executemulti(
+        return await self._executemulti(
             (
                 (
                     """
@@ -2083,7 +1863,7 @@ class SQLiteBackend(Backend):
     ) -> asyncio.Future[None] | None:
         await self._ready.wait()
 
-        future: asyncio.Future[None] | None = await self.__execute(
+        future: asyncio.Future[None] | None = await self._execute(
             """
                 INSERT OR REPLACE INTO roles
                 (
@@ -2143,7 +1923,7 @@ class SQLiteBackend(Backend):
     ) -> asyncio.Future[None] | None:
         await self._ready.wait()
 
-        future: asyncio.Future[None] | None = await self.__execute(
+        future: asyncio.Future[None] | None = await self._execute(
             "DELETE FROM roles WHERE id = ?;",
             (role_id,),
             confirm,
@@ -2161,7 +1941,7 @@ class SQLiteBackend(Backend):
     ) -> asyncio.Future[None] | None:
         await self._ready.wait()
 
-        future: asyncio.Future[None] | None = await self.__execute(
+        future: asyncio.Future[None] | None = await self._execute(
             """
             UPDATE roles SET
                 _sync = ?,
