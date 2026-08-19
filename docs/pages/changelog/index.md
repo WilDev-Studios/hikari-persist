@@ -7,6 +7,11 @@ This page provides a high-level overview of changes in each release. For full de
 
 ## 0.1.0 (In Progress)
 
+### 0.1.0a6 (August 19th, 2026)
+
+- Bumped `hikari` version to `2.6.0`.
+- UX module for compatibility checking and package updates.
+
 ### 0.1.0a5 (April 9th, 2026)
 
 - New query `get` methods with opt-in REST hydration.

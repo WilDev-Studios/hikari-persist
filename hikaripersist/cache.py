@@ -5,6 +5,10 @@ from collections.abc import (
     Callable,
 )
 from hikaripersist.backend import Backend
+from hikaripersist.ux import (
+    check_updates,
+    verify_compatibility,
+)
 from hikaripersist.impl.event import (
     BulkChannelEvent,
     BulkMemberEvent,
@@ -77,7 +81,8 @@ class Cache:
         Raises
         ------
         RuntimeError
-            If an instance of `Cache` already exists.
+            - If an instance of `Cache` already exists.
+            - If the version of `hikari` is unsupported by this version of `hikari-persist`.
         TypeError
             - If `bot` is not `hikari.GatewayBot`.
             - If `backend` is not `Backend`.
@@ -99,6 +104,8 @@ class Cache:
         if rule is not None and not isinstance(rule, Rule):
             error: str = "Provided rule must be Rule"
             raise TypeError(error)
+
+        verify_compatibility()
 
         Cache.__instance = self
 
@@ -142,6 +149,7 @@ class Cache:
         self._sync: int = int(time.time() * 1000)
 
     async def __bot_starting(self, _: hikari.StartingEvent, __: bool) -> None:
+        await check_updates(self._bot)
         await self._backend.connect()
 
         self._guilds = {guild.id async for guild in self._bot.rest.fetch_my_guilds()}
