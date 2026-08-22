@@ -29,6 +29,7 @@ from .impl.query import (
     RoleQuery,
 )
 from .rule import Rule
+from .ux import check_updates
 from pathlib import Path
 from typing import (
     ClassVar,
@@ -79,11 +80,27 @@ class Cache:
         ------
         RuntimeError
             If an instance of `Cache` already exists.
+        TypeError
+            - If `bot` is not `hikari.GatewayBot`.
+            - If `backend` is not `Backend`.
+            - If `rule` is provided and is not `Rule`.
         """
 
         if Cache.__instance:
             error: str = "Only one Cache instance can exist at any time"
             raise RuntimeError(error)
+
+        if not isinstance(bot, hikari.GatewayBot):
+            error: str = "Provided bot must be hikari.GatewayBot"
+            raise TypeError(error)
+
+        if not isinstance(backend, Backend):
+            error: str = "Provided backend must be Backend"
+            raise TypeError(error)
+
+        if rule is not None and not isinstance(rule, Rule):
+            error: str = "Provided rule must be Rule"
+            raise TypeError(error)
 
         Cache.__instance = self
 
@@ -127,6 +144,7 @@ class Cache:
         self._sync: int = int(time.time() * 1000)
 
     async def __bot_starting(self, _: hikari.StartingEvent, __: bool) -> None:
+        await check_updates(self._bot)
         await self._backend.connect()
 
         self._guilds = {guild.id async for guild in self._bot.rest.fetch_my_guilds()}

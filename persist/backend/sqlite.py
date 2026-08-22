@@ -1694,8 +1694,10 @@ class SQLiteBackend(SQLBackend, Backend):
                     (user_id, guild_id,),
                 ),
                 (
-                    "DELETE FROM users WHERE id = ? AND NOT EXISTS "
-                    "(SELECT 1 FROM members WHERE id = ?);",
+                    (
+                        "DELETE FROM users WHERE id = ? AND NOT EXISTS "
+                        "(SELECT 1 FROM members WHERE id = ?);"
+                    ),
                     (user_id, user_id,),
                 ),
             ),
