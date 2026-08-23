@@ -71,7 +71,7 @@ class BulkMemberEvent(PersistEvent):
     guild_id: hikari.Snowflake
     """The ID of the guild that the members belong to."""
     passed: set[hikari.Member]
-    """All members that succeeded in passing channel rules/filters."""
+    """All members that succeeded in passing member rules/filters."""
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class BulkRoleEvent(PersistEvent):
