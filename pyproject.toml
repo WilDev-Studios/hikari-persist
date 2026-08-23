@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
@@ -68,7 +68,10 @@ exclude = [
 ]
 
 [tool.hatch.version]
-path = "persist/__init__.py"
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "persist/_version.py"
 
 [tool.ruff]
 target-version = "py310"
@@ -99,6 +102,7 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
+"_version.py" = ["RUF022"]
 "tests/**/*.py" = ["ANN", "ARG", "PLR2004", "PLW0108"]
 
 [pytest]

@@ -7,3 +7,4 @@ __pycache__/
 dist/
 private/
 venv/
+persist/_version.py
