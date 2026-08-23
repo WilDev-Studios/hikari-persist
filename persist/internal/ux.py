@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from hikaripersist import (
+from .. import (
     __hikari_version__,
     __version__,
 )
@@ -11,6 +11,9 @@ import logging
 
 if TYPE_CHECKING:
     from hikari import GatewayBot
+
+
+__all__ = ()
 
 logger: logging.Logger = logging.getLogger("persist.ux")
 

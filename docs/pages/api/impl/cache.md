@@ -3,4 +3,4 @@ title: Cache
 description: Persistent Cache
 ---
 
-::: hikaripersist.cache
+::: persist.impl.cache

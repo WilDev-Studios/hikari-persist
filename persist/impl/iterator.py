@@ -21,6 +21,7 @@ from typing import (
 if TYPE_CHECKING:
     from _typeshed import SupportsRichComparison
 
+
 __all__ = (
     "CacheIterator",
     "CacheIteratorStep",

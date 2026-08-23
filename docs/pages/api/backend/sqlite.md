@@ -3,4 +3,4 @@ title: SQLite
 description: SQLite Database Backend
 ---
 
-::: hikaripersist.backend.sqlite
+::: persist.backend.sqlite

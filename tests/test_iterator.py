@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, Callable
-from hikaripersist.impl.iterator import CacheIterator
+from persist.impl.iterator import CacheIterator
 from typing import Any
 
 import pytest

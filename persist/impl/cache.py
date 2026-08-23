@@ -4,12 +4,8 @@ from collections.abc import (
     Awaitable,
     Callable,
 )
-from hikaripersist.backend import Backend
-from hikaripersist.ux import (
-    check_updates,
-    verify_compatibility,
-)
-from hikaripersist.impl.event import (
+from ..backend import Backend
+from .event import (
     BulkChannelEvent,
     BulkMemberEvent,
     BulkRoleEvent,
@@ -26,13 +22,14 @@ from hikaripersist.impl.event import (
     RoleRemoveEvent,
     RoleUpdateEvent,
 )
-from hikaripersist.impl.query import (
+from ..internal.query import (
     ChannelQuery,
     GuildQuery,
     MemberQuery,
     RoleQuery,
 )
-from hikaripersist.rule import Rule
+from ..internal.ux import check_updates
+from .rule import Rule
 from pathlib import Path
 from typing import (
     ClassVar,
@@ -81,8 +78,7 @@ class Cache:
         Raises
         ------
         RuntimeError
-            - If an instance of `Cache` already exists.
-            - If the version of `hikari` is unsupported by this version of `hikari-persist`.
+            If an instance of `Cache` already exists.
         TypeError
             - If `bot` is not `hikari.GatewayBot`.
             - If `backend` is not `Backend`.
@@ -104,8 +100,6 @@ class Cache:
         if rule is not None and not isinstance(rule, Rule):
             error: str = "Provided rule must be Rule"
             raise TypeError(error)
-
-        verify_compatibility()
 
         Cache.__instance = self
 
@@ -135,6 +129,7 @@ class Cache:
             hikari.RoleCreateEvent: self.__role_create,
             hikari.RoleDeleteEvent: self.__role_delete,
             hikari.RoleUpdateEvent: self.__role_update,
+            hikari.ShardReadyEvent: self.__bot_shard_ready,
             hikari.StartingEvent: self.__bot_starting,
             hikari.StoppingEvent: self.__bot_stopping,
             hikari.GuildThreadCreateEvent: self.__thread_create,
@@ -145,14 +140,15 @@ class Cache:
         for event in self._handlers:
             self._bot.subscribe(event, self.__event)
 
-        self._guilds: set[hikari.Snowflake] = {}
+        self._guilds: set[hikari.Snowflake] = set()
         self._sync: int = int(time.time() * 1000)
+
+    async def __bot_shard_ready(self, event: hikari.ShardReadyEvent, __: bool) -> None:
+        self._guilds.update(event.unavailable_guilds)
 
     async def __bot_starting(self, _: hikari.StartingEvent, __: bool) -> None:
         await check_updates(self._bot)
         await self._backend.connect()
-
-        self._guilds = {guild.id async for guild in self._bot.rest.fetch_my_guilds()}
 
     async def __bot_stopping(self, _: hikari.StoppingEvent, __: bool) -> None:
         await self._backend.disconnect()
@@ -841,16 +837,7 @@ class Cache:
         ----------
         path : Path | str
             The path to the file to write.
-
-        Raises
-        ------
-        TypeError
-            If `path` is not `Path` or `str`.
         """
-
-        if not isinstance(path, (Path, str)):
-            error: str = "Provided path must be Path or str"
-            raise TypeError(error)
 
         await self._backend.snapshot(Path(path))
 
@@ -888,28 +875,7 @@ class Cache:
             If cache member data should be cleared.
         roles : bool
             If cache role data should be cleared.
-
-        Raises
-        ------
-        TypeError
-            If any parameter is not `bool`.
         """
-
-        if not isinstance(channels, bool):
-            error: str = "Provided channels must be bool"
-            raise TypeError(error)
-
-        if not isinstance(guilds, bool):
-            error: str = "Provided guilds must be bool"
-            raise TypeError(error)
-
-        if not isinstance(members, bool):
-            error: str = "Provided members must be bool"
-            raise TypeError(error)
-
-        if not isinstance(roles, bool):
-            error: str = "Provided roles must be bool"
-            raise TypeError(error)
 
         logger.debug(
             "Attempting to clear cache: Channels=%s, Guilds=%s, Members=%s, Roles=%s",
@@ -1018,16 +984,7 @@ class Cache:
         ----------
         path : Path | str
             The path to the file to read.
-
-        Raises
-        ------
-        TypeError
-            If `path` is not `Path` or `str`.
         """
-
-        if not isinstance(path, (Path, str)):
-            error: str = "Provided path must be Path or str"
-            raise TypeError(error)
 
         await self._backend.restore(Path(path))
 
