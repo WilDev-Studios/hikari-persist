@@ -16,6 +16,26 @@ __all__ = (
     "Rule",
 )
 
+
+def _coerce_snowflakes(
+    values: Iterable[hikari.Snowflakeish],
+    *,
+    param: str,
+) -> set[hikari.Snowflake]:
+    result: set[hikari.Snowflake] = set()
+
+    for v in values:
+        if isinstance(v, bool) or not isinstance(v, (int, hikari.Snowflake)):
+            error: str = (
+                f"{param} must contain only int or hikari.Snowflake elements, "
+                f"got {type(v).__name__}: {v!r}"
+            )
+            raise TypeError(error)
+
+        result.add(hikari.Snowflake(v))
+
+    return result
+
 class ChannelRule:
     """Channel cache rule."""
 
@@ -44,6 +64,11 @@ class ChannelRule:
         predicate : Callable[[hikari.GuildChannel], bool] | None
             If provided, a predicate method used for advanced, custom filtration of pending
             channels. Returns `True` if the channel should be cached, `False` otherwise.
+
+        Raises
+        ------
+        TypeError
+            If any allowlist/denylist contains a non-Snowflakeish element.
         """
 
         self._channel_allowlist: set[hikari.Snowflake] = set()
@@ -53,13 +78,13 @@ class ChannelRule:
         self._predicate: Callable[[hikari.GuildChannel], bool] | None = predicate
 
         if channel_allowlist:
-            self._channel_allowlist.update(channel_allowlist)
+            self._channel_allowlist = _coerce_snowflakes(channel_allowlist, param="channel_allowlist") # noqa: E501
         if channel_denylist:
-            self._channel_denylist.update(channel_denylist)
+            self._channel_denylist = _coerce_snowflakes(channel_denylist, param="channel_denylist")
         if guild_allowlist:
-            self._guild_allowlist.update(guild_allowlist)
+            self._guild_allowlist = _coerce_snowflakes(guild_allowlist, param="guild_allowlist")
         if guild_denylist:
-            self._guild_denylist.update(guild_denylist)
+            self._guild_denylist = _coerce_snowflakes(guild_denylist, param="guild_denylist")
 
     def can_cache(
         self,
@@ -108,6 +133,11 @@ class GuildRule:
         predicate : Callable[[hikari.Guild], bool] | None
             If provided, a predicate method used for advanced, custom filtration of pending
             guilds. Returns `True` if the guild should be cached, `False` otherwise.
+
+        Raises
+        ------
+        TypeError
+            If any allowlist/denylist contains a non-Snowflakeish element.
         """
 
         self._guild_allowlist: set[hikari.Snowflake] = set()
@@ -115,9 +145,9 @@ class GuildRule:
         self._predicate: Callable[[hikari.Guild], bool] | None = predicate
 
         if guild_allowlist:
-            self._guild_allowlist.add(guild_allowlist)
+            self._guild_allowlist = _coerce_snowflakes(guild_allowlist, param="guild_allowlist")
         if guild_denylist:
-            self._guild_denylist.add(guild_denylist)
+            self._guild_denylist = _coerce_snowflakes(guild_denylist, param="guild_denylist")
 
     def can_cache(
         self,
@@ -166,6 +196,11 @@ class MemberRule:
         predicate : Callable[[hikari.Member], bool] | None
             If provided, a predicate method used for advanced, custom filtration of pending
             members. Returns `True` if the member should be cached, `False` otherwise.
+
+        Raises
+        ------
+        TypeError
+            If any allowlist/denylist contains a non-Snowflakeish element.
         """
 
         self._guild_allowlist: set[hikari.Snowflake] = set()
@@ -175,13 +210,13 @@ class MemberRule:
         self._predicate: Callable[[hikari.Member], bool] | None = predicate
 
         if guild_allowlist:
-            self._guild_allowlist.add(guild_allowlist)
+            self._guild_allowlist = _coerce_snowflakes(guild_allowlist, param="guild_allowlist")
         if guild_denylist:
-            self._guild_denylist.add(guild_denylist)
+            self._guild_denylist = _coerce_snowflakes(guild_denylist, param="guild_denylist")
         if user_allowlist:
-            self._user_allowlist.add(user_allowlist)
+            self._user_allowlist = _coerce_snowflakes(user_allowlist, param="user_allowlist")
         if user_denylist:
-            self._user_denylist.add(user_denylist)
+            self._user_denylist = _coerce_snowflakes(user_denylist, param="user_denylist")
 
     def can_cache(
         self,
@@ -236,6 +271,11 @@ class RoleRule:
         predicate : Callable[[hikari.Role], bool] | None
             If provided, a predicate method used for advanced, custom filtration of pending
             roles. Returns `True` if the role should be cached, `False` otherwise.
+
+        Raises
+        ------
+        TypeError
+            If any allowlist/denylist contains a non-Snowflakeish element.
         """
 
         self._guild_allowlist: set[hikari.Snowflake] = set()
@@ -245,13 +285,13 @@ class RoleRule:
         self._predicate: Callable[[hikari.Role], bool] | None = predicate
 
         if guild_allowlist:
-            self._guild_allowlist.add(guild_allowlist)
+            self._guild_allowlist = _coerce_snowflakes(guild_allowlist, param="guild_allowlist")
         if guild_denylist:
-            self._guild_denylist.add(guild_denylist)
+            self._guild_denylist = _coerce_snowflakes(guild_denylist, param="guild_denylist")
         if role_allowlist:
-            self._role_allowlist.add(role_allowlist)
+            self._role_allowlist = _coerce_snowflakes(role_allowlist, param="role_allowlist")
         if role_denylist:
-            self._role_denylist.add(role_denylist)
+            self._role_denylist = _coerce_snowflakes(role_denylist, param="role_denylist")
 
     def can_cache(
         self,
@@ -311,6 +351,15 @@ class Rule:
             - If `member` is provided and is not `MemberRule`.
             - If `role` is provided and is not `RoleRule`.
         """
+
+        if channel is not None and not isinstance(channel, ChannelRule):
+            raise TypeError(f"channel must be a ChannelRule, got {type(channel).__name__}")
+        if guild is not None and not isinstance(guild, GuildRule):
+            raise TypeError(f"guild must be a GuildRule, got {type(guild).__name__}")
+        if member is not None and not isinstance(member, MemberRule):
+            raise TypeError(f"member must be a MemberRule, got {type(member).__name__}")
+        if role is not None and not isinstance(role, RoleRule):
+            raise TypeError(f"role must be a RoleRule, got {type(role).__name__}")
 
         self._channel: ChannelRule = channel or ChannelRule()
         self._guild: GuildRule = guild or GuildRule()

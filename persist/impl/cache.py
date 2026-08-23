@@ -4,8 +4,8 @@ from collections.abc import (
     Awaitable,
     Callable,
 )
-from .backend import Backend
-from .impl.event import (
+from ..backend import Backend
+from .event import (
     BulkChannelEvent,
     BulkMemberEvent,
     BulkRoleEvent,
@@ -22,14 +22,14 @@ from .impl.event import (
     RoleRemoveEvent,
     RoleUpdateEvent,
 )
-from .impl.query import (
+from ..internal.query import (
     ChannelQuery,
     GuildQuery,
     MemberQuery,
     RoleQuery,
 )
+from ..internal.ux import check_updates
 from .rule import Rule
-from .ux import check_updates
 from pathlib import Path
 from typing import (
     ClassVar,
@@ -44,7 +44,6 @@ import logging
 import sys
 import time
 import traceback
-
 
 __all__ = ("Cache",)
 
@@ -130,6 +129,7 @@ class Cache:
             hikari.RoleCreateEvent: self.__role_create,
             hikari.RoleDeleteEvent: self.__role_delete,
             hikari.RoleUpdateEvent: self.__role_update,
+            hikari.ShardReadyEvent: self.__bot_shard_ready,
             hikari.StartingEvent: self.__bot_starting,
             hikari.StoppingEvent: self.__bot_stopping,
             hikari.GuildThreadCreateEvent: self.__thread_create,
@@ -140,14 +140,15 @@ class Cache:
         for event in self._handlers:
             self._bot.subscribe(event, self.__event)
 
-        self._guilds: set[hikari.Snowflake] = {}
+        self._guilds: set[hikari.Snowflake] = set()
         self._sync: int = int(time.time() * 1000)
+
+    async def __bot_shard_ready(self, event: hikari.ShardReadyEvent, __: bool) -> None:
+        self._guilds.update(event.unavailable_guilds)
 
     async def __bot_starting(self, _: hikari.StartingEvent, __: bool) -> None:
         await check_updates(self._bot)
         await self._backend.connect()
-
-        self._guilds = {guild.id async for guild in self._bot.rest.fetch_my_guilds()}
 
     async def __bot_stopping(self, _: hikari.StoppingEvent, __: bool) -> None:
         await self._backend.disconnect()

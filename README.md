@@ -55,6 +55,9 @@ pip install hikari-persist
 
 ## Quick Start
 
+Depending on which database backend you'd like to use, you need to install their dependencies:
+- `persist.SQLiteBackend`: Install using `hikari-persist[sqlite]` or `aiosqlite`.
+
 Create a basic cache bot:
 
 ```python
@@ -73,12 +76,11 @@ To access all data cached, the `Cache` object exposes public-facing query proper
 Examples of iterating through the cache looks like this:
 
 ```python
-async def channels():
-    async for channel in cache.channels.all():
-        ... # Lazily iterate through all cached channels
+async for channel in cache.channels.all():
+    ... # Lazily iterate through all cached channels
 
-    async for channel in cache.channels.where(name="general", type=hikari.ChannelType.GUILD_TEXT):
-        print(type(channel)) # >>> <class 'hikari.GuildTextChannel'>
+async for channel in cache.channels.where(name="general", type=hikari.ChannelType.GUILD_TEXT):
+    print(type(channel)) # >>> <class 'hikari.GuildTextChannel'>
 ```
 
 The `.all()` query method returns an async iterator over the cache.
@@ -145,8 +147,8 @@ Database migration is implemented, but early migration is cumbersome when gettin
 - [X] Advanced lookups (filter, map, limit, etc.)
 - Database backends:
     - [X] SQLite
-    - [ ] MySQL
     - [ ] PostgreSQL
+    - [ ] MySQL
     - [ ] Redis
     - [ ] JSON
 

@@ -2,23 +2,30 @@ __all__ = (
     "BulkChannelEvent",
     "BulkMemberEvent",
     "BulkRoleEvent",
+    "Cache",
     "CacheIterator",
     "CacheIteratorStep",
     "ChannelInsertEvent",
     "ChannelRemoveEvent",
+    "ChannelRule",
     "ChannelUpdateEvent",
     "GuildInsertEvent",
     "GuildRemoveEvent",
+    "GuildRule",
     "GuildUpdateEvent",
     "MemberInsertEvent",
     "MemberRemoveEvent",
+    "MemberRule",
     "MemberUpdateEvent",
     "PersistEvent",
     "RoleInsertEvent",
     "RoleRemoveEvent",
+    "RoleRule",
     "RoleUpdateEvent",
+    "Rule",
 )
 
+from .cache import Cache
 from .event import (
     BulkChannelEvent,
     BulkMemberEvent,
@@ -40,4 +47,11 @@ from .event import (
 from .iterator import (
     CacheIterator,
     CacheIteratorStep,
+)
+from .rule import (
+    ChannelRule,
+    GuildRule,
+    MemberRule,
+    RoleRule,
+    Rule,
 )

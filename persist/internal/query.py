@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from .iterator import CacheIterator
+from ..impl.iterator import CacheIterator
 from typing import (
     Literal,
     overload,
@@ -10,14 +10,14 @@ from typing import (
 
 if TYPE_CHECKING:
     from datetime import timedelta
-    from ..cache import Cache
+    from ..impl.cache import Cache
 
     import hikari
 
 import logging
 
-
 __all__ = ()
+
 
 logger: logging.Logger = logging.getLogger("persist.query")
 

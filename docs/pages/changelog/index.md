@@ -7,6 +7,12 @@ This page provides a high-level overview of changes in each release. For full de
 
 ## 0.1.0 (In Progress)
 
+### PENDING_VERSION (STAGING)
+
+- Significant refactor of backend database logic for modularity with future backends.
+- Fixed ratelimits on startup from unnecessary guild querying.
+- Fixed exceptions slipping through unaccounted-for futures.
+
 ### 0.1.0a6 (August 19th, 2026)
 
 - Bumped `hikari` version to `2.6.0`.

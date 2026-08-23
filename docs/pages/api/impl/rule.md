@@ -3,4 +3,4 @@ title: Rule
 description: Cache Rulesets
 ---
 
-::: hikaripersist.rule
+::: persist.impl.rule

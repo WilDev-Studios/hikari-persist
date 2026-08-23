@@ -41,31 +41,29 @@ from .backend import (
     Backend,
     SQLiteBackend,
 )
-from .cache import Cache
 from .impl import (
     BulkChannelEvent,
     BulkMemberEvent,
     BulkRoleEvent,
+    Cache,
     CacheIterator,
     CacheIteratorStep,
     ChannelInsertEvent,
     ChannelRemoveEvent,
+    ChannelRule,
     ChannelUpdateEvent,
     GuildInsertEvent,
     GuildRemoveEvent,
+    GuildRule,
     GuildUpdateEvent,
     MemberInsertEvent,
     MemberRemoveEvent,
+    MemberRule,
     MemberUpdateEvent,
     PersistEvent,
     RoleInsertEvent,
     RoleRemoveEvent,
-    RoleUpdateEvent,
-)
-from .rule import (
-    ChannelRule,
-    GuildRule,
-    MemberRule,
     RoleRule,
+    RoleUpdateEvent,
     Rule,
 )

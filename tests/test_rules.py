@@ -4,7 +4,7 @@ import pytest
 import hikari
 
 from unittest.mock import MagicMock
-from persist.rule import (
+from persist.impl.rule import (
     ChannelRule,
     GuildRule,
     MemberRule,

@@ -16,6 +16,7 @@ from datetime import (
 )
 from typing import (
     Any,
+    ClassVar,
     Literal,
     overload,
     TYPE_CHECKING,
@@ -24,8 +25,12 @@ from typing import (
 import asyncio
 
 if TYPE_CHECKING:
-    from ..cache import Cache
-    from ..impl.query import (
+    from ..impl.cache import Cache
+    from ..internal.definitions import (
+        DataType,
+        Table,
+    )
+    from ..internal.query import (
         BaseQuery,
         ChannelQuery,
         GuildQuery,
@@ -43,6 +48,8 @@ class Backend(ABC):
     """Base persistent cache backend."""
 
     _cache: Cache
+
+    TYPES: ClassVar[dict[DataType, str]]
 
     @overload
     async def bulk_channels(
@@ -812,6 +819,9 @@ class SQLOP:
     future: asyncio.Future[None] | None
 
 class SQLBackend:
+    TYPES: ClassVar[dict[DataType, str]]
+    PLACEHOLDER: ClassVar[str]
+
     def __init__(self, batch_size: int) -> None:
         self._batch_size: int = batch_size
         self._queue: asyncio.Queue[SQLOP] = asyncio.Queue()
@@ -850,6 +860,23 @@ class SQLBackend:
                 parameters.append(value)
 
         return conditions, parameters
+
+    def _ddl_create(self, table: Table) -> str:
+        columns: list[str] = []
+
+        for field in table.fields:
+            col_type: str = self.TYPES[field.datatype]
+            parts: list[str] = [field.name, col_type]
+
+            if not field.nullable:
+                parts.append("NOT NULL")
+
+            columns.append(" ".join(parts))
+
+        if table.primary_key:
+            columns.append(f"PRIMARY KEY ({', '.join(table.primary_key)})")
+
+        return f"CREATE TABLE IF NOT EXISTS {table.name} ({', '.join(columns)});"
 
     async def _execute(
         self,
@@ -1030,3 +1057,15 @@ class SQLBackend:
             ) if channel.default_reaction_emoji_name else None
 
         return tuple(values.keys()), tuple(values.values())
+
+    def _sql_delete(self, table_name: str, where: Sequence[str]) -> str:
+        return f"DELETE FROM {table_name} WHERE {' AND '.join(f'{w} = {self.PLACEHOLDER}' for w in where)};" # noqa: E501
+
+    def _sql_insert(self, table_name: str, field_names: Sequence[str]) -> str:
+        placeholder: str = ", ".join([self.PLACEHOLDER] * len(field_names))
+        return f"INSERT INTO {table_name} ({', '.join(field_names)}) VALUES ({placeholder});"
+
+    def _sql_update(self, table_name: str, field_names: Sequence[str], where: Sequence[str]) -> str:
+        sets: str = ", ".join(f"{n} = {self.PLACEHOLDER}" for n in field_names)
+        cond: str = " AND ".join(f"{w} = {self.PLACEHOLDER}" for w in where)
+        return f"UPDATE {table_name} SET {sets} WHERE {cond};"
