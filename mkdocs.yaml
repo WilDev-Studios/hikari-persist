@@ -72,6 +72,7 @@ nav:
     - Index: pages/api/index.md
     - persist.backend:
       - ~.base: pages/api/backend/base.md
+      - ~.postgresql: pages/api/backend/postgresql.md
       - ~.sqlite: pages/api/backend/sqlite.md
     - persist.impl:
       - ~.cache: pages/api/impl/cache.md
@@ -79,6 +80,7 @@ nav:
       - ~.iterator: pages/api/impl/iterator.md
       - ~.rule: pages/api/impl/rule.md
     - persist.internal:
+      - ~.builder: pages/api/internal/builder.md
       - ~.channels: pages/api/internal/channels.md
       - ~.codecs: pages/api/internal/codecs.md
       - ~.definitions: pages/api/internal/definitions.md
@@ -87,12 +89,4 @@ nav:
       - ~.schemas: pages/api/internal/schemas.md
       - ~.serializers: pages/api/internal/serializers.md
       - ~.ux: pages/api/internal/ux.md
-  - Changelog:
-    - Index: pages/changelog/index.md
-    - 0.1.0a6: pages/changelog/0.1.0a6.md
-    - 0.1.0a5: pages/changelog/0.1.0a5.md
-    - 0.1.0a4: pages/changelog/0.1.0a4.md
-    - 0.1.0a3: pages/changelog/0.1.0a3.md
-    - 0.1.0a2: pages/changelog/0.1.0a2.md
-    - 0.1.0a1: pages/changelog/0.1.0a1.md
   - Lifecycle: pages/lifecycle.md

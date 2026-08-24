@@ -55,6 +55,7 @@ pip install hikari-persist
 ## Quick Start
 
 Depending on which database backend you'd like to use, you need to install their dependencies:
+- `persist.PostgreSQLBackend`: Install using `hikari-persist[postgresql]` or `asyncpg`.
 - `persist.SQLiteBackend`: Install using `hikari-persist[sqlite]` or `aiosqlite`.
 
 Create a basic cache bot:
@@ -146,7 +147,7 @@ Database migration is implemented, but early migration is cumbersome when gettin
 - [X] Advanced lookups (filter, map, limit, etc.)
 - Database backends:
     - [X] SQLite
-    - [ ] PostgreSQL
+    - [X] PostgreSQL
     - [ ] MySQL
     - [ ] Redis
     - [ ] JSON
