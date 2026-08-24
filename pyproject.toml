@@ -19,6 +19,7 @@ keywords = [
     "discord",
     "hikari",
     "persistence",
+    "postgresql",
     "sqlite",
 ]
 classifiers = [
@@ -50,6 +51,9 @@ Documentation = "https://hikari-persist.wildevstudios.net/"
 Issues = "https://github.com/WilDev-Studios/hikari-persist/issues"
 
 [project.optional-dependencies]
+postgresql = [
+    "asyncpg>0.31.0,<1",
+]
 sqlite = [
     "aiosqlite>0.22.1,<1",
 ]

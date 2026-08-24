@@ -26,6 +26,7 @@ import asyncio
 
 if TYPE_CHECKING:
     from ..impl.cache import Cache
+    from ..internal.common import MaybeFuture
     from ..internal.definitions import (
         DataType,
         Table,
@@ -72,7 +73,7 @@ class Backend(ABC):
         self,
         channels: Sequence[hikari.GuildChannel],
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         """
         Insert or update channels in bulk.
 
@@ -87,7 +88,7 @@ class Backend(ABC):
 
         Returns
         -------
-        asyncio.Future[None] | None
+        MaybeFuture
             If `confirm`, the returned future to wait for.
         """
 
@@ -112,7 +113,7 @@ class Backend(ABC):
         self,
         members: Iterable[hikari.Member],
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         """
         Insert or update members in bulk.
 
@@ -127,7 +128,7 @@ class Backend(ABC):
 
         Returns
         -------
-        asyncio.Future[None] | None
+        MaybeFuture
             If `confirm`, the returned future to wait for.
         """
 
@@ -152,7 +153,7 @@ class Backend(ABC):
         self,
         roles: Iterable[hikari.Role],
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         """
         Insert or update roles in bulk.
 
@@ -167,7 +168,7 @@ class Backend(ABC):
 
         Returns
         -------
-        asyncio.Future[None] | None
+        MaybeFuture
             If `confirm`, the returned future to wait for.
         """
 
@@ -192,7 +193,7 @@ class Backend(ABC):
         self,
         channel: hikari.GuildChannel,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         """
         Store a created channel.
 
@@ -207,7 +208,7 @@ class Backend(ABC):
 
         Returns
         -------
-        asyncio.Future[None] | None
+        MaybeFuture
             If `confirm`, the returned future to wait for.
         """
 
@@ -232,7 +233,7 @@ class Backend(ABC):
         self,
         channel_id: hikari.Snowflake,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         """
         Remove a deleted channel.
 
@@ -247,7 +248,7 @@ class Backend(ABC):
 
         Returns
         -------
-        asyncio.Future[None] | None
+        MaybeFuture
             If `confirm`, the returned future to wait for.
         """
 
@@ -272,7 +273,7 @@ class Backend(ABC):
         self,
         channel: hikari.GuildChannel,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         """
         Update an updated channel.
 
@@ -287,7 +288,7 @@ class Backend(ABC):
 
         Returns
         -------
-        asyncio.Future[None] | None
+        MaybeFuture
             If `confirm`, the returned future to wait for.
         """
 
@@ -355,7 +356,7 @@ class Backend(ABC):
         self,
         guild: hikari.GatewayGuild,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         """
         Store a joined guild.
 
@@ -370,7 +371,7 @@ class Backend(ABC):
 
         Returns
         -------
-        asyncio.Future[None] | None
+        MaybeFuture
             If `confirm`, the returned future to wait for.
         """
 
@@ -395,7 +396,7 @@ class Backend(ABC):
         self,
         guild_id: hikari.Snowflake,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         """
         Remove a left guild.
 
@@ -410,7 +411,7 @@ class Backend(ABC):
 
         Returns
         -------
-        asyncio.Future[None] | None
+        MaybeFuture
             If `confirm`, the returned future to wait for.
         """
 
@@ -435,7 +436,7 @@ class Backend(ABC):
         self,
         guild: hikari.GatewayGuild,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         """
         Update an updated guild.
 
@@ -450,7 +451,7 @@ class Backend(ABC):
 
         Returns
         -------
-        asyncio.Future[None] | None
+        MaybeFuture
             If `confirm`, the returned future to wait for.
         """
 
@@ -551,7 +552,7 @@ class Backend(ABC):
         self,
         member: hikari.Member,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         """
         Store a created member.
 
@@ -566,7 +567,7 @@ class Backend(ABC):
 
         Returns
         -------
-        asyncio.Future[None] | None
+        MaybeFuture
             If `confirm`, the returned future to wait for.
         """
 
@@ -594,7 +595,7 @@ class Backend(ABC):
         user_id: hikari.Snowflake,
         guild_id: hikari.Snowflake,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         """
         Remove a deleted member.
 
@@ -611,7 +612,7 @@ class Backend(ABC):
 
         Returns
         -------
-        asyncio.Future[None] | None
+        MaybeFuture
             If `confirm`, the returned future to wait for.
         """
 
@@ -636,7 +637,7 @@ class Backend(ABC):
         self,
         member: hikari.Member,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         """
         Update an updated member.
 
@@ -651,7 +652,7 @@ class Backend(ABC):
 
         Returns
         -------
-        asyncio.Future[None] | None
+        MaybeFuture
             If `confirm`, the returned future to wait for.
         """
 
@@ -698,7 +699,7 @@ class Backend(ABC):
         self,
         role: hikari.Role,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         """
         Store a created role.
 
@@ -713,7 +714,7 @@ class Backend(ABC):
 
         Returns
         -------
-        asyncio.Future[None] | None
+        MaybeFuture
             If `confirm`, the returned future to wait for.
         """
 
@@ -738,7 +739,7 @@ class Backend(ABC):
         self,
         role_id: hikari.Snowflake,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         """
         Remove a deleted role.
 
@@ -753,7 +754,7 @@ class Backend(ABC):
 
         Returns
         -------
-        asyncio.Future[None] | None
+        MaybeFuture
             If `confirm`, the returned future to wait for.
         """
 
@@ -778,7 +779,7 @@ class Backend(ABC):
         self,
         role: hikari.Role,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         """
         Update an updated role.
 
@@ -793,7 +794,7 @@ class Backend(ABC):
 
         Returns
         -------
-        asyncio.Future[None] | None
+        MaybeFuture
             If `confirm`, the returned future to wait for.
         """
 
@@ -816,7 +817,7 @@ class SQLOP:
     sql: str | list[str]
     mode: Literal["execute", "executemany", "multi"]
     parameters: tuple | list[tuple]
-    future: asyncio.Future[None] | None
+    future: MaybeFuture
 
 class SQLBackend:
     TYPES: ClassVar[dict[DataType, str]]
@@ -883,8 +884,8 @@ class SQLBackend:
         sql: str,
         parameters: tuple,
         confirm: bool = False,
-    ) -> asyncio.Future[None] | None:
-        future: asyncio.Future[None] | None = None
+    ) -> MaybeFuture:
+        future: MaybeFuture = None
         if confirm:
             future = asyncio.get_running_loop().create_future()
 
@@ -896,8 +897,8 @@ class SQLBackend:
         sql: str,
         parameters: list[tuple],
         confirm: bool = False,
-    ) -> asyncio.Future[None] | None:
-        future: asyncio.Future[None] | None = None
+    ) -> MaybeFuture:
+        future: MaybeFuture = None
         if confirm:
             future = asyncio.get_running_loop().create_future()
 
@@ -908,8 +909,8 @@ class SQLBackend:
         self,
         queries: Sequence[tuple[str, tuple]],
         confirm: bool = False,
-    ) -> asyncio.Future[None] | None:
-        future: asyncio.Future[None] | None = None
+    ) -> MaybeFuture:
+        future: MaybeFuture = None
         if confirm:
             future = asyncio.get_running_loop().create_future()
 

@@ -28,6 +28,7 @@ __all__ = (
     "MemberRule",
     "MemberUpdateEvent",
     "PersistEvent",
+    "PostgreSQLBackend",
     "RoleInsertEvent",
     "RoleRemoveEvent",
     "RoleRule",
@@ -39,6 +40,7 @@ __all__ = (
 from ._version import __version__
 from .backend import (
     Backend,
+    PostgreSQLBackend,
     SQLiteBackend,
 )
 from .impl import (

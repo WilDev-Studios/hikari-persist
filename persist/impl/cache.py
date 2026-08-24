@@ -33,6 +33,7 @@ from .rule import Rule
 from pathlib import Path
 from typing import (
     ClassVar,
+    TYPE_CHECKING,
     TypeVar,
 )
 
@@ -44,6 +45,10 @@ import logging
 import sys
 import time
 import traceback
+
+if TYPE_CHECKING:
+    from ..internal.common import MaybeFuture
+
 
 __all__ = ("Cache",)
 
@@ -141,7 +146,7 @@ class Cache:
             self._bot.subscribe(event, self.__event)
 
         self._guilds: set[hikari.Snowflake] = set()
-        self._sync: int = int(time.time() * 1000)
+        self._sync: int = int(time.time())
 
     async def __bot_shard_ready(self, event: hikari.ShardReadyEvent, __: bool) -> None:
         self._guilds.update(event.unavailable_guilds)
@@ -161,7 +166,7 @@ class Cache:
         ] = self._listeners.get(event_type, [])
         needs_confirm: bool = any(confirm for _, confirm in listeners)
 
-        future: asyncio.Future[None] | None = None
+        future: MaybeFuture = None
 
         if event_type in self._handlers:
             future = await self._handlers[event_type](event, needs_confirm)
@@ -206,7 +211,7 @@ class Cache:
         self,
         event: hikari.GuildChannelCreateEvent,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         if not self._rule._channel.can_cache(event.channel):
             self._bot.dispatch(ChannelInsertEvent(
                 channel=event.channel,
@@ -218,7 +223,7 @@ class Cache:
             )
             return None
 
-        future: asyncio.Future[None] | None = await self._backend.channel_create(
+        future: MaybeFuture = await self._backend.channel_create(
             event.channel,
             confirm,
         )
@@ -237,8 +242,8 @@ class Cache:
         self,
         event: hikari.GuildChannelDeleteEvent,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
-        future: asyncio.Future[None] | None = await self._backend.channel_delete(
+    ) -> MaybeFuture:
+        future: MaybeFuture = await self._backend.channel_delete(
             event.channel_id,
             confirm,
         )
@@ -257,7 +262,7 @@ class Cache:
         self,
         event: hikari.GuildChannelUpdateEvent,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         if not self._rule._channel.can_cache(event.channel):
             self._bot.dispatch(ChannelUpdateEvent(
                 channel=event.channel,
@@ -269,7 +274,7 @@ class Cache:
             )
             return None
 
-        future: asyncio.Future[None] | None = await self._backend.channel_update(
+        future: MaybeFuture = await self._backend.channel_update(
             event.channel,
             confirm,
         )
@@ -288,7 +293,7 @@ class Cache:
         self,
         event: hikari.GuildAvailableEvent,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         futures: list[asyncio.Future[None]] = []
 
         cfailed: set[hikari.PermissibleGuildChannel] = set()
@@ -302,7 +307,7 @@ class Cache:
             cfailed.add(channel)
 
         if cpassed:
-            future: asyncio.Future[None] | None = await self._backend.bulk_channels(
+            future: MaybeFuture = await self._backend.bulk_channels(
                 cpassed,
                 confirm,
             )
@@ -331,7 +336,7 @@ class Cache:
             )
 
         if self._rule._guild.can_cache(event.guild):
-            future: asyncio.Future[None] | None = await self._backend.guild_join(
+            future: MaybeFuture = await self._backend.guild_join(
                 event.guild,
                 confirm,
             )
@@ -367,7 +372,7 @@ class Cache:
             mfailed.add(member)
 
         if mpassed:
-            future: asyncio.Future[None] | None = await self._backend.bulk_members(
+            future: MaybeFuture = await self._backend.bulk_members(
                 mpassed,
                 confirm,
             )
@@ -406,7 +411,7 @@ class Cache:
             rfailed.add(role)
 
         if rpassed:
-            future: asyncio.Future[None] | None = await self._backend.bulk_roles(
+            future: MaybeFuture = await self._backend.bulk_roles(
                 rpassed,
                 confirm,
             )
@@ -449,7 +454,7 @@ class Cache:
         self,
         event: hikari.GuildJoinEvent,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         if not self._rule._guild.can_cache(event.guild):
             self._bot.dispatch(GuildInsertEvent(
                 guild=event.guild,
@@ -461,7 +466,7 @@ class Cache:
             )
             return None
 
-        future: asyncio.Future[None] | None = await self._backend.guild_join(event.guild, confirm)
+        future: MaybeFuture = await self._backend.guild_join(event.guild, confirm)
         self._bot.dispatch(GuildInsertEvent(
             guild=event.guild,
             successful=True,
@@ -477,8 +482,8 @@ class Cache:
         self,
         event: hikari.GuildLeaveEvent,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
-        future: asyncio.Future[None] | None = await self._backend.guild_leave(
+    ) -> MaybeFuture:
+        future: MaybeFuture = await self._backend.guild_leave(
             event.guild_id,
             confirm,
         )
@@ -496,7 +501,7 @@ class Cache:
         self,
         event: hikari.GuildUpdateEvent,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         if not self._rule._guild.can_cache(event.guild):
             self._bot.dispatch(GuildUpdateEvent(
                 guild=event.guild,
@@ -508,7 +513,7 @@ class Cache:
             )
             return None
 
-        future: asyncio.Future[None] | None = await self._backend.guild_update(event.guild, confirm)
+        future: MaybeFuture = await self._backend.guild_update(event.guild, confirm)
         self._bot.dispatch(GuildUpdateEvent(
             guild=event.guild,
             successful=True,
@@ -524,7 +529,7 @@ class Cache:
         self,
         event: hikari.MemberChunkEvent,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         futures: list[asyncio.Future[None]] = []
 
         failed: set[hikari.Member] = set()
@@ -539,7 +544,7 @@ class Cache:
 
         if passed: # TODO: Bulk update cache, not iterated updates
             for member in passed:
-                future: asyncio.Future[None] | None = await self._backend.member_create(
+                future: MaybeFuture = await self._backend.member_create(
                     member,
                     confirm,
                 )
@@ -575,7 +580,7 @@ class Cache:
         self,
         event: hikari.MemberCreateEvent,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         if not self._rule._member.can_cache(event.member):
             self._bot.dispatch(MemberInsertEvent(
                 member=event.member,
@@ -589,7 +594,7 @@ class Cache:
             )
             return None
 
-        future: asyncio.Future[None] | None = await self._backend.member_create(
+        future: MaybeFuture = await self._backend.member_create(
             event.member,
             confirm,
         )
@@ -609,8 +614,8 @@ class Cache:
         self,
         event: hikari.MemberDeleteEvent,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
-        future: asyncio.Future[None] | None = await self._backend.member_delete(
+    ) -> MaybeFuture:
+        future: MaybeFuture = await self._backend.member_delete(
             event.user_id,
             event.guild_id,
             confirm,
@@ -631,7 +636,7 @@ class Cache:
         self,
         event: hikari.MemberUpdateEvent,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         if not self._rule._member.can_cache(event.member):
             self._bot.dispatch(MemberUpdateEvent(
                 member=event.member,
@@ -645,7 +650,7 @@ class Cache:
             )
             return None
 
-        future: asyncio.Future[None] | None = await self._backend.member_update(
+        future: MaybeFuture = await self._backend.member_update(
             event.member,
             confirm,
         )
@@ -665,7 +670,7 @@ class Cache:
         self,
         event: hikari.RoleCreateEvent,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         if not self._rule._role.can_cache(event.role):
             self._bot.dispatch(RoleInsertEvent(
                 role=event.role,
@@ -679,7 +684,7 @@ class Cache:
             )
             return None
 
-        future: asyncio.Future[None] | None = await self._backend.role_create(event.role, confirm)
+        future: MaybeFuture = await self._backend.role_create(event.role, confirm)
         self._bot.dispatch(RoleInsertEvent(
             role=event.role,
             successful=True,
@@ -696,8 +701,8 @@ class Cache:
         self,
         event: hikari.RoleDeleteEvent,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
-        future: asyncio.Future[None] | None = await self._backend.role_delete(
+    ) -> MaybeFuture:
+        future: MaybeFuture = await self._backend.role_delete(
             event.role_id,
             confirm,
         )
@@ -717,7 +722,7 @@ class Cache:
         self,
         event: hikari.RoleUpdateEvent,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         if not self._rule._role.can_cache(event.role):
             self._bot.dispatch(RoleUpdateEvent(
                 role=event.role,
@@ -731,7 +736,7 @@ class Cache:
             )
             return None
 
-        future: asyncio.Future[None] | None = await self._backend.role_update(event.role, confirm)
+        future: MaybeFuture = await self._backend.role_update(event.role, confirm)
         self._bot.dispatch(RoleUpdateEvent(
             role=event.role,
             successful=True,
@@ -748,7 +753,7 @@ class Cache:
         self,
         event: hikari.GuildThreadCreateEvent,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         if not self._rule._channel.can_cache(event.thread):
             self._bot.dispatch(ChannelInsertEvent(
                 channel=event.thread,
@@ -760,7 +765,7 @@ class Cache:
             )
             return None
 
-        future: asyncio.Future[None] | None = await self._backend.channel_create(
+        future: MaybeFuture = await self._backend.channel_create(
             event.thread,
             confirm,
         )
@@ -779,8 +784,8 @@ class Cache:
         self,
         event: hikari.GuildThreadDeleteEvent,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
-        future: asyncio.Future[None] | None = await self._backend.channel_delete(
+    ) -> MaybeFuture:
+        future: MaybeFuture = await self._backend.channel_delete(
             event.thread_id,
             confirm,
         )
@@ -799,7 +804,7 @@ class Cache:
         self,
         event: hikari.GuildThreadUpdateEvent,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         if not self._rule._channel.can_cache(event.thread):
             self._bot.dispatch(ChannelUpdateEvent(
                 channel=event.thread,
@@ -811,7 +816,7 @@ class Cache:
             )
             return None
 
-        future: asyncio.Future[None] | None = await self._backend.channel_update(
+        future: MaybeFuture = await self._backend.channel_update(
             event.thread,
             confirm,
         )
