@@ -55,7 +55,7 @@ CHANNELS: Table = Table(
         Field("last_message_id", DataType.BIGINT),
         Field("rate_limit_per_user", DataType.SMALLINT, codec=CodecTimedelta()),
         Field("last_pin_timestamp", DataType.DATETIME),
-        Field("default_auto_archive_duration", DataType.SMALLINT, codec=CodecTimedelta()),
+        Field("default_auto_archive_duration", DataType.INTEGER, codec=CodecTimedelta()),
         Field("bitrate", DataType.INTEGER),
         Field("region", DataType.STRING),
         Field("user_limit", DataType.TINYINT),
@@ -213,7 +213,7 @@ ROLES: Table = Table(
         Field("unicode_emoji", DataType.STRING, serializer=SerializerEnum(hikari.UnicodeEmoji)),
         Field("is_managed", DataType.BOOLEAN, nullable=False),
         Field("is_mentionable", DataType.BOOLEAN, nullable=False),
-        Field("permissions", DataType.INTEGER, serializer=SerializerFlag(
+        Field("permissions", DataType.BIGINT, serializer=SerializerFlag(
             hikari.Permissions,
         ), nullable=False),
         Field("position", DataType.SMALLINT, nullable=False),
@@ -244,7 +244,7 @@ USERS: Table = Table(
         )),
         Field("avatar_hash", DataType.STRING),
         Field("banner_hash", DataType.STRING),
-        Field("accent_color", DataType.SMALLINT),
+        Field("accent_color", DataType.INTEGER),
         Field("is_bot", DataType.BOOLEAN, nullable=False),
         Field("is_system", DataType.BOOLEAN, nullable=False),
         Field("flags", DataType.INTEGER, serializer=SerializerFlag(

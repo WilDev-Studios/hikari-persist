@@ -10,6 +10,14 @@ from typing import (
     TYPE_CHECKING,
     TypeVar,
 )
+from .channels import CHANNEL_FIELDS
+from .schemas import (
+    CHANNELS,
+    GUILDS,
+    MEMBERS,
+    ROLES,
+    USERS,
+)
 
 if TYPE_CHECKING:
     from .codecs import Codec
@@ -18,12 +26,11 @@ if TYPE_CHECKING:
         Table,
     )
 
+    import hikari
+
 U = TypeVar('U')
 
-__all__ = (
-    "RowMapper",
-    "decode_row",
-)
+__all__ = ()
 
 
 def _decode(field: Field, value: Any) -> Any: # noqa: ANN401
@@ -85,3 +92,18 @@ class RowMapper(Generic[U]):
                 sync if f.name == "_sync" else self.extract(obj, f.name)
             ) for f in self.fields
         )
+
+CHANNEL_WRITE_MAPPERS: dict[hikari.ChannelType, RowMapper[hikari.GuildChannel]] = {
+    ctype: RowMapper(
+        CHANNELS,
+        factory=lambda _: None,
+        fields=tuple(f for f in CHANNELS.fields if f.name in names or f.name == "_sync"),
+        extract=lambda obj, name: getattr(obj, name, None),
+    )
+    for ctype, names in CHANNEL_FIELDS.items()
+}
+
+GUILD_MAPPER: RowMapper  = RowMapper(GUILDS, factory=None)
+ROLE_MAPPER: RowMapper   = RowMapper(ROLES, factory=None)
+MEMBER_MAPPER: RowMapper = RowMapper(MEMBERS, factory=None)
+USER_MAPPER: RowMapper   = RowMapper(USERS, factory=None)

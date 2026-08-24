@@ -11,10 +11,16 @@ from .base import (
     SQLBackend,
     SQLOP,
 )
+from ..internal.builder import _build_channel
 from ..internal.definitions import DataType
 from ..internal.mapping import (
+    CHANNEL_WRITE_MAPPERS,
     decode_row,
+    GUILD_MAPPER,
+    MEMBER_MAPPER,
+    ROLE_MAPPER,
     RowMapper,
+    USER_MAPPER,
 )
 from ..internal.schemas import (
     CHANNELS,
@@ -24,7 +30,6 @@ from ..internal.schemas import (
     SCHEMA,
     USERS,
 )
-from ..internal.channels import CHANNEL_FIELDS
 from pathlib import Path
 from typing import (
     Any,
@@ -44,6 +49,7 @@ except ImportError:
     INSTALLED: bool = False
 
 if TYPE_CHECKING:
+    from ..internal.common import MaybeFuture
     from ..internal.query import (
         ChannelQuery,
         GuildQuery,
@@ -56,189 +62,6 @@ __all__ = ("SQLiteBackend",)
 
 logger: logging.Logger = logging.getLogger("persist.sqlite")
 
-
-def _extract_channel(obj: hikari.GuildChannel, name: str) -> Any: # noqa: ANN401
-    return getattr(obj, name, None)
-
-_CHANNEL_WRITE_MAPPERS: dict[hikari.ChannelType, RowMapper[hikari.GuildChannel]] = {
-    ctype: RowMapper(
-        CHANNELS,
-        factory=lambda _: None,
-        fields=tuple(f for f in CHANNELS.fields if f.name in names or f.name == "_sync"),
-        extract=_extract_channel,
-    )
-    for ctype, names in CHANNEL_FIELDS.items()
-}
-
-def _build_channel( # noqa: PLR0911
-    app: hikari.RESTAware,
-    ctype: hikari.ChannelType,
-    k: dict[str, Any],
-) -> hikari.GuildChannel:
-    common = {
-        "app": app,
-        "id": k["id"],
-        "name": k["name"],
-        "type": k["type"],
-        "guild_id": k["guild_id"],
-    }
-
-    match ctype:
-        case hikari.ChannelType.GUILD_TEXT:
-            return hikari.GuildTextChannel(
-                **common,
-                parent_id=k["parent_id"],
-                position=k["position"],
-                is_nsfw=bool(k["is_nsfw"]),
-                permission_overwrites=k["permission_overwrites"] or {},
-                topic=k["topic"],
-                last_message_id=k["last_message_id"],
-                rate_limit_per_user=k["rate_limit_per_user"],
-                last_pin_timestamp=k["last_pin_timestamp"],
-                default_auto_archive_duration=k["default_auto_archive_duration"],
-                application_id=k.get("application_id"),
-                flags=k["flags"],
-            )
-        case hikari.ChannelType.GUILD_VOICE:
-            return hikari.GuildVoiceChannel(
-                **common,
-                parent_id=k["parent_id"],
-                position=k["position"],
-                is_nsfw=bool(k["is_nsfw"]),
-                permission_overwrites=k["permission_overwrites"] or {},
-                bitrate=k["bitrate"],
-                region=k["region"],
-                user_limit=k["user_limit"],
-                video_quality_mode=k["video_quality_mode"],
-                last_message_id=k["last_message_id"],
-                application_id=k.get("application_id"),
-                flags=k["flags"],
-            )
-        case hikari.ChannelType.GUILD_CATEGORY:
-            return hikari.GuildCategory(
-                **common,
-                parent_id=k["parent_id"],
-                position=k["position"],
-                is_nsfw=bool(k["is_nsfw"]),
-                permission_overwrites=k["permission_overwrites"] or {},
-                application_id=k.get("application_id"),
-                flags=k["flags"],
-            )
-        case hikari.ChannelType.GUILD_NEWS:
-            return hikari.GuildNewsChannel(
-                **common,
-                parent_id=k["parent_id"],
-                position=k["position"],
-                is_nsfw=bool(k["is_nsfw"]),
-                permission_overwrites=k["permission_overwrites"] or {},
-                topic=k["topic"],
-                last_message_id=k["last_message_id"],
-                last_pin_timestamp=k["last_pin_timestamp"],
-                default_auto_archive_duration=k["default_auto_archive_duration"],
-                application_id=k.get("application_id"),
-            )
-        case hikari.ChannelType.GUILD_NEWS_THREAD:
-            return hikari.GuildNewsThread(
-                **common,
-                parent_id=k["parent_id"],
-                last_message_id=k["last_message_id"],
-                last_pin_timestamp=k["last_pin_timestamp"],
-                rate_limit_per_user=k["rate_limit_per_user"],
-                approximate_message_count=k["approximate_message_count"],
-                approximate_member_count=k["approximate_member_count"],
-                member=k["member"],
-                owner_id=k["owner_id"],
-                metadata=k["metadata"],
-                application_id=k.get("application_id"),
-            )
-        case hikari.ChannelType.GUILD_PUBLIC_THREAD:
-            return hikari.GuildPublicThread(
-                **common,
-                parent_id=k["parent_id"],
-                last_message_id=k["last_message_id"],
-                last_pin_timestamp=k["last_pin_timestamp"],
-                rate_limit_per_user=k["rate_limit_per_user"],
-                approximate_message_count=k["approximate_message_count"],
-                approximate_member_count=k["approximate_member_count"],
-                member=k["member"],
-                owner_id=k["owner_id"],
-                metadata=k["metadata"],
-                applied_tag_ids=k["applied_tag_ids"],
-                application_id=k.get("application_id"),
-                flags=k["flags"],
-            )
-        case hikari.ChannelType.GUILD_PRIVATE_THREAD:
-            return hikari.GuildPrivateThread(
-                **common,
-                parent_id=k["parent_id"],
-                last_message_id=k["last_message_id"],
-                last_pin_timestamp=k["last_pin_timestamp"],
-                rate_limit_per_user=k["rate_limit_per_user"],
-                approximate_message_count=k["approximate_message_count"],
-                approximate_member_count=k["approximate_member_count"],
-                member=k["member"],
-                owner_id=k["owner_id"],
-                metadata=k["metadata"],
-                application_id=k.get("application_id"),
-            )
-        case hikari.ChannelType.GUILD_STAGE:
-            return hikari.GuildStageChannel(
-                **common,
-                parent_id=k["parent_id"],
-                position=k["position"],
-                is_nsfw=bool(k["is_nsfw"]),
-                permission_overwrites=k["permission_overwrites"] or {},
-                bitrate=k["bitrate"],
-                region=k["region"],
-                user_limit=k["user_limit"],
-                video_quality_mode=k["video_quality_mode"],
-                last_message_id=k["last_message_id"],
-                application_id=k.get("application_id"),
-                flags=k["flags"],
-            )
-        case hikari.ChannelType.GUILD_FORUM:
-            return hikari.GuildForumChannel(
-                **common,
-                parent_id=k["parent_id"],
-                position=k["position"],
-                is_nsfw=bool(k["is_nsfw"]),
-                permission_overwrites=k["permission_overwrites"] or {},
-                topic=k["topic"],
-                last_thread_id=k["last_thread_id"],
-                rate_limit_per_user=k["rate_limit_per_user"],
-                default_thread_rate_limit_per_user=k["default_thread_rate_limit_per_user"],
-                default_auto_archive_duration=k["default_auto_archive_duration"],
-                available_tags=k["available_tags"] or [],
-                default_sort_order=k["default_sort_order"],
-                default_layout=k["default_layout"],
-                default_reaction_emoji_id=k["default_reaction_emoji_id"],
-                default_reaction_emoji_name=k["default_reaction_emoji_name"],
-                application_id=k.get("application_id"),
-                flags=k["flags"],
-            )
-        case hikari.ChannelType.GUILD_MEDIA:
-            return hikari.GuildMediaChannel(
-                **common,
-                parent_id=k["parent_id"],
-                position=k["position"],
-                is_nsfw=bool(k["is_nsfw"]),
-                permission_overwrites=k["permission_overwrites"] or {},
-                topic=k["topic"],
-                last_thread_id=k["last_thread_id"],
-                rate_limit_per_user=k["rate_limit_per_user"],
-                default_thread_rate_limit_per_user=k["default_thread_rate_limit_per_user"],
-                default_auto_archive_duration=k["default_auto_archive_duration"],
-                available_tags=k["available_tags"] or [],
-                default_sort_order=k["default_sort_order"],
-                default_layout=k["default_layout"],
-                default_reaction_emoji_id=k["default_reaction_emoji_id"],
-                default_reaction_emoji_name=k["default_reaction_emoji_name"],
-                application_id=k.get("application_id"),
-                flags=k["flags"],
-            )
-        case _:
-            error: str = f"Unhandled channel type: {ctype!r}"
-            raise ValueError(error)
 
 class SQLiteBackend(SQLBackend, Backend):
     """Use `SQLite` as the persistent cache backend."""
@@ -253,11 +76,6 @@ class SQLiteBackend(SQLBackend, Backend):
     Until then, each update requires a deletion of cache.
     """
     PLACEHOLDER: ClassVar[str] = '?'
-
-    _GUILD_MAPPER: ClassVar[RowMapper] = RowMapper(GUILDS, factory=None)
-    _ROLE_MAPPER: ClassVar[RowMapper] = RowMapper(ROLES, factory=None)
-    _MEMBER_MAPPER: ClassVar[RowMapper] = RowMapper(MEMBERS, factory=None)
-    _USER_MAPPER: ClassVar[RowMapper] = RowMapper(USERS, factory=None)
 
     __slots__ = (
         "_backup",
@@ -526,7 +344,7 @@ class SQLiteBackend(SQLBackend, Backend):
         self,
         channels: Sequence[hikari.GuildChannel],
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         await self._ready.wait()
 
         if not channels:
@@ -541,10 +359,10 @@ class SQLiteBackend(SQLBackend, Backend):
             by_type.setdefault(c.type, []).append(c)
 
         for ctype, group in by_type.items():
-            mapper: RowMapper = _CHANNEL_WRITE_MAPPERS[ctype]
+            mapper: RowMapper = CHANNEL_WRITE_MAPPERS[ctype]
             rows: list[str] = [mapper.to_row(c, sync=self._cache._sync) for c in group]
             sql: str = self._sql_upsert_replace("channels", mapper.names)
-            future: asyncio.Future[None] | None = await self._executemany(sql, rows, confirm)
+            future: MaybeFuture = await self._executemany(sql, rows, confirm)
 
             if future:
                 futures.append(future)
@@ -558,10 +376,10 @@ class SQLiteBackend(SQLBackend, Backend):
         self,
         members: Iterable[hikari.Member],
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         await self._ready.wait()
 
-        mm, um = self._MEMBER_MAPPER, self._USER_MAPPER
+        mm, um = MEMBER_MAPPER, USER_MAPPER
         member_rows: list[tuple[Any, ...]] = []
         user_rows: list[tuple[Any, ...]] = []
 
@@ -575,13 +393,13 @@ class SQLiteBackend(SQLBackend, Backend):
         futures: list[asyncio.Future[None]] = []
 
         m_sql: str = self._sql_upsert_replace("members", mm.names)
-        future: asyncio.Future[None] | None = await self._executemany(m_sql, member_rows, confirm)
+        future: MaybeFuture = await self._executemany(m_sql, member_rows, confirm)
 
         if future:
             futures.append(future)
 
         u_sql: str = self._sql_upsert_replace("users", um.names)
-        future: asyncio.Future[None] | None = await self._executemany(u_sql, user_rows, confirm)
+        future: MaybeFuture = await self._executemany(u_sql, user_rows, confirm)
 
         if future:
             futures.append(future)
@@ -595,10 +413,10 @@ class SQLiteBackend(SQLBackend, Backend):
         self,
         roles: Iterable[hikari.Role],
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         await self._ready.wait()
 
-        mapper: RowMapper = self._ROLE_MAPPER
+        mapper: RowMapper = ROLE_MAPPER
         rows: list[tuple[Any, ...]] = [mapper.to_row(r, sync=self._cache._sync) for r in roles]
 
         if not rows:
@@ -611,10 +429,10 @@ class SQLiteBackend(SQLBackend, Backend):
         self,
         channel: hikari.GuildChannel,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         await self._ready.wait()
 
-        mapper: RowMapper = _CHANNEL_WRITE_MAPPERS[channel.type]
+        mapper: RowMapper = CHANNEL_WRITE_MAPPERS[channel.type]
         sql: str = self._sql_upsert_replace("channels", mapper.names)
 
         return await self._execute(sql, mapper.to_row(channel, sync=self._cache._sync), confirm)
@@ -623,7 +441,7 @@ class SQLiteBackend(SQLBackend, Backend):
         self,
         channel_id: hikari.Snowflake,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         await self._ready.wait()
         return await self._execute(self._sql_delete("channels", ("id",)), (channel_id,), confirm)
 
@@ -631,10 +449,10 @@ class SQLiteBackend(SQLBackend, Backend):
         self,
         channel: hikari.GuildChannel,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         await self._ready.wait()
 
-        mapper: RowMapper = _CHANNEL_WRITE_MAPPERS[channel.type]
+        mapper: RowMapper = CHANNEL_WRITE_MAPPERS[channel.type]
         values = (*mapper.to_row(channel, sync=self._cache._sync), channel.id)
         sql: str = self._sql_update("channels", mapper.names, ("id",))
 
@@ -754,10 +572,10 @@ class SQLiteBackend(SQLBackend, Backend):
         self,
         guild: hikari.GatewayGuild,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         await self._ready.wait()
 
-        mapper: RowMapper = self._GUILD_MAPPER
+        mapper: RowMapper = GUILD_MAPPER
         sql: str = self._sql_upsert_replace("guilds", mapper.names)
 
         return await self._execute(sql, mapper.to_row(guild, sync=self._cache._sync), confirm)
@@ -766,7 +584,7 @@ class SQLiteBackend(SQLBackend, Backend):
         self,
         guild_id: hikari.Snowflake,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         await self._ready.wait()
 
         sql: str = self._sql_delete("guilds", ("id",))
@@ -776,7 +594,7 @@ class SQLiteBackend(SQLBackend, Backend):
         self,
         guild: hikari.GatewayGuild,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         await self._ready.wait()
 
         set_fields: tuple[str, ...] = tuple(f for f in GUILDS.fields if f.name != "id")
@@ -936,10 +754,10 @@ class SQLiteBackend(SQLBackend, Backend):
         self,
         member: hikari.Member,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         await self._ready.wait()
 
-        mm, um = self._MEMBER_MAPPER, self._USER_MAPPER
+        mm, um = MEMBER_MAPPER, USER_MAPPER
         m_sql: str = self._sql_upsert_replace("members", mm.names)
         u_sql: str = self._sql_upsert_replace("users", um.names)
 
@@ -956,7 +774,7 @@ class SQLiteBackend(SQLBackend, Backend):
         user_id: hikari.Snowflake,
         guild_id: hikari.Snowflake,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         await self._ready.wait()
 
         m_sql: str = self._sql_delete("members", ("id", "guild_id"))
@@ -977,7 +795,7 @@ class SQLiteBackend(SQLBackend, Backend):
         self,
         member: hikari.Member,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         await self._ready.wait()
 
         m_fields: tuple[str, ...] = tuple(
@@ -1047,10 +865,10 @@ class SQLiteBackend(SQLBackend, Backend):
         self,
         role: hikari.Role,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         await self._ready.wait()
 
-        mapper: RowMapper = self._ROLE_MAPPER
+        mapper: RowMapper = ROLE_MAPPER
         sql: str = self._sql_upsert_replace("roles", mapper.names)
 
         return await self._execute(sql, mapper.to_row(role, sync=self._cache._sync), confirm)
@@ -1059,7 +877,7 @@ class SQLiteBackend(SQLBackend, Backend):
         self,
         role_id: hikari.Snowflake,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         await self._ready.wait()
 
         sql: str = self._sql_delete("roles", ("id",))
@@ -1069,7 +887,7 @@ class SQLiteBackend(SQLBackend, Backend):
         self,
         role: hikari.Role,
         confirm: bool,
-    ) -> asyncio.Future[None] | None:
+    ) -> MaybeFuture:
         await self._ready.wait()
 
         set_fields: tuple[str, ...] = tuple(f for f in ROLES.fields if f.name != "id")
