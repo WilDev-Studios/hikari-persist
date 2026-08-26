@@ -26,6 +26,12 @@ import asyncio
 
 if TYPE_CHECKING:
     from ..impl.cache import Cache
+    from ..impl.objects import (
+        PersistentGuild,
+        PersistentGuildChannel,
+        PersistentMember,
+        PersistentRole,
+    )
     from ..internal.common import MaybeFuture
     from ..internal.definitions import (
         DataType,
@@ -459,7 +465,7 @@ class Backend(ABC):
     async def iter_channels(
         self,
         query: ChannelQuery | None,
-    ) -> AsyncIterator[hikari.GuildChannel]:
+    ) -> AsyncIterator[PersistentGuildChannel]:
         """
         Iterate through all channels in a query.
 
@@ -470,7 +476,7 @@ class Backend(ABC):
 
         Returns
         -------
-        AsyncIterator[hikari.GuildChannel]
+        AsyncIterator[PersistentGuildChannel]
             The async iterator containing the queried channels.
         """
 
@@ -478,7 +484,7 @@ class Backend(ABC):
     async def iter_guilds(
         self,
         query: GuildQuery | None,
-    ) -> AsyncIterator[hikari.Guild]:
+    ) -> AsyncIterator[PersistentGuild]:
         """
         Iterate through all guilds in a query.
 
@@ -489,7 +495,7 @@ class Backend(ABC):
 
         Returns
         -------
-        AsyncIterator[hikari.Guild]
+        AsyncIterator[PersistentGuild]
             The async iterator containing the queried guilds.
         """
 
@@ -497,7 +503,7 @@ class Backend(ABC):
     async def iter_members(
         self,
         query: MemberQuery | None,
-    ) -> AsyncIterator[hikari.Member]:
+    ) -> AsyncIterator[PersistentMember]:
         """
         Iterate through all members in a query.
 
@@ -508,7 +514,7 @@ class Backend(ABC):
 
         Returns
         -------
-        AsyncIterator[hikari.Member]
+        AsyncIterator[PersistentMember]
             The async iterator containing the queried members.
         """
 
@@ -516,7 +522,7 @@ class Backend(ABC):
     async def iter_roles(
         self,
         query: RoleQuery | None,
-    ) -> AsyncIterator[hikari.Role]:
+    ) -> AsyncIterator[PersistentRole]:
         """
         Iterate through all roles in a query.
 
@@ -527,7 +533,7 @@ class Backend(ABC):
 
         Returns
         -------
-        AsyncIterator[hikari.Role]
+        AsyncIterator[PersistentRole]
             The async iterator containing the queried roles.
         """
 

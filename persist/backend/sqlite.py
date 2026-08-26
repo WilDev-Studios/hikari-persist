@@ -11,6 +11,12 @@ from .base import (
     SQLBackend,
     SQLOP,
 )
+from ..impl.objects import (
+    PersistentGuild,
+    PersistentGuildChannel,
+    PersistentMember,
+    PersistentRole,
+)
 from ..internal.builder import _build_channel
 from ..internal.definitions import DataType
 from ..internal.mapping import (
@@ -608,7 +614,7 @@ class SQLiteBackend(SQLBackend, Backend):
     async def iter_channels(
         self,
         query: ChannelQuery | None,
-    ) -> AsyncIterator[hikari.GuildChannel]:
+    ) -> AsyncIterator[PersistentGuildChannel]:
         await self._ready.wait()
 
         sql: str = "SELECT * FROM channels"
@@ -634,12 +640,12 @@ class SQLiteBackend(SQLBackend, Backend):
                     ctype: hikari.ChannelType = hikari.ChannelType(row[type_idx])
                     kwargs: dict[str, Any] = decode_row(CHANNELS.fields, row)
                     del kwargs["_sync"]
-                    yield _build_channel(self._cache._bot, ctype, kwargs)
+                    yield _build_channel(self._cache, ctype, kwargs)
 
     async def iter_guilds(
         self,
         query: GuildQuery | None,
-    ) -> AsyncIterator[hikari.Guild]:
+    ) -> AsyncIterator[PersistentGuild]:
         await self._ready.wait()
 
         sql: str = "SELECT * FROM guilds"
@@ -662,12 +668,12 @@ class SQLiteBackend(SQLBackend, Backend):
                 for row in rows:
                     kwargs: dict[str, Any] = decode_row(GUILDS.fields, row)
                     del kwargs["_sync"]
-                    yield hikari.Guild(app=self._cache.bot, **kwargs)
+                    yield PersistentGuild(self._cache, **kwargs)
 
     async def iter_members(
         self,
         query: MemberQuery | None,
-    ) -> AsyncIterator[hikari.Member]:
+    ) -> AsyncIterator[PersistentMember]:
         await self._ready.wait()
 
         sql: str = "SELECT * FROM members"
@@ -714,7 +720,8 @@ class SQLiteBackend(SQLBackend, Backend):
 
                     del mkwargs["_sync"]
                     del mkwargs["id"]
-                    yield hikari.Member(
+                    yield PersistentMember(
+                        self._cache,
                         user=user,
                         is_deaf=hikari.UNDEFINED,
                         is_mute=hikari.UNDEFINED,
@@ -725,7 +732,7 @@ class SQLiteBackend(SQLBackend, Backend):
     async def iter_roles(
         self,
         query: RoleQuery | None,
-    ) -> AsyncIterator[hikari.Role]:
+    ) -> AsyncIterator[PersistentRole]:
         await self._ready.wait()
 
         sql: str = "SELECT * FROM roles"
@@ -748,7 +755,7 @@ class SQLiteBackend(SQLBackend, Backend):
                 for row in rows:
                     kwargs: dict[str, Any] = decode_row(ROLES.fields, row)
                     del kwargs["_sync"]
-                    yield hikari.Role(app=self._cache.bot, **kwargs)
+                    yield PersistentRole(self._cache, **kwargs)
 
     async def member_create(
         self,

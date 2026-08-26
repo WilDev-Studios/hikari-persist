@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from ..impl.iterator import CacheIterator
 from typing import (
+    Any,
     Literal,
     overload,
     TYPE_CHECKING,
@@ -11,6 +12,22 @@ from typing import (
 if TYPE_CHECKING:
     from datetime import timedelta
     from ..impl.cache import Cache
+    from ..impl.objects import (
+        PersistentGuild,
+        PersistentGuildCategory,
+        PersistentGuildChannel,
+        PersistentGuildForumChannel,
+        PersistentGuildMediaChannel,
+        PersistentGuildNewsChannel,
+        PersistentGuildNewsThread,
+        PersistentGuildPrivateThread,
+        PersistentGuildPublicThread,
+        PersistentGuildStageChannel,
+        PersistentGuildTextChannel,
+        PersistentGuildVoiceChannel,
+        PersistentMember,
+        PersistentRole,
+    )
 
     import hikari
 
@@ -31,7 +48,7 @@ class BaseQuery:
 class ChannelQuery(BaseQuery):
     """Channel backend query."""
 
-    def __init__(self, cache: Cache) -> None:
+    def __init__(self, cache: Cache, **kwargs: Any) -> None: # noqa: ANN401
         super().__init__(cache)
 
         self._id: hikari.Snowflake | None = None
@@ -42,13 +59,23 @@ class ChannelQuery(BaseQuery):
         self._position: int | None = None
         self._is_nsfw: bool | None = None
 
-    def all(self) -> CacheIterator[hikari.GuildChannel]:
+        if not kwargs:
+            return
+
+        for key, value in kwargs.items():
+            if not hasattr(self, f"_{key}"):
+                error: str = f"Unknown query parameter: {key!r}"
+                raise TypeError(error)
+
+            setattr(self, f"_{key}", value)
+
+    def all(self) -> CacheIterator[PersistentGuildChannel]:
         """
         Retrieve all results.
 
         Returns
         -------
-        CacheIterator[hikari.GuildChannel]
+        CacheIterator[PersistentGuildChannel]
             An asynchronous iterator providing lazy access to the results.
         """
 
@@ -59,7 +86,7 @@ class ChannelQuery(BaseQuery):
         *,
         id: hikari.Snowflake, # noqa: A002
         fetch_if_missing: bool = False,
-    ) -> hikari.GuildChannel | None:
+    ) -> PersistentGuildChannel | None:
         """
         Fetch a channel directly from its ID.
 
@@ -72,7 +99,7 @@ class ChannelQuery(BaseQuery):
 
         Returns
         -------
-        hikari.GuildChannel | None
+        PersistentGuildChannel | None
             The fetched channel from cache or REST, if found.
 
         Note
@@ -95,7 +122,7 @@ class ChannelQuery(BaseQuery):
 
         self._id = id
 
-        result: hikari.GuildChannel | None = await CacheIterator(
+        result: PersistentGuildChannel | None = await CacheIterator(
             self._cache._backend.iter_channels(self)
         ).first()
 
@@ -121,7 +148,7 @@ class ChannelQuery(BaseQuery):
         parent_id: hikari.Snowflake | None = None,
         position: int | None = None,
         is_nsfw: bool | None = None,
-    ) -> CacheIterator[hikari.GuildTextChannel]:...
+    ) -> CacheIterator[PersistentGuildTextChannel]:...
 
     @overload
     def where(
@@ -134,7 +161,7 @@ class ChannelQuery(BaseQuery):
         parent_id: hikari.Snowflake | None = None,
         position: int | None = None,
         is_nsfw: bool | None = None,
-    ) -> CacheIterator[hikari.GuildVoiceChannel]:...
+    ) -> CacheIterator[PersistentGuildVoiceChannel]:...
 
     @overload
     def where(
@@ -147,7 +174,7 @@ class ChannelQuery(BaseQuery):
         parent_id: hikari.Snowflake | None = None,
         position: int | None = None,
         is_nsfw: bool | None = None,
-    ) -> CacheIterator[hikari.GuildCategory]:...
+    ) -> CacheIterator[PersistentGuildCategory]:...
 
     @overload
     def where(
@@ -160,7 +187,7 @@ class ChannelQuery(BaseQuery):
         parent_id: hikari.Snowflake | None = None,
         position: int | None = None,
         is_nsfw: bool | None = None,
-    ) -> CacheIterator[hikari.GuildNewsChannel]:...
+    ) -> CacheIterator[PersistentGuildNewsChannel]:...
 
     @overload
     def where(
@@ -173,7 +200,7 @@ class ChannelQuery(BaseQuery):
         parent_id: hikari.Snowflake | None = None,
         position: int | None = None,
         is_nsfw: bool | None = None,
-    ) -> CacheIterator[hikari.GuildNewsThread]:...
+    ) -> CacheIterator[PersistentGuildNewsThread]:...
 
     @overload
     def where(
@@ -186,7 +213,7 @@ class ChannelQuery(BaseQuery):
         parent_id: hikari.Snowflake | None = None,
         position: int | None = None,
         is_nsfw: bool | None = None,
-    ) -> CacheIterator[hikari.GuildPublicThread]:...
+    ) -> CacheIterator[PersistentGuildPublicThread]:...
 
     @overload
     def where(
@@ -199,7 +226,7 @@ class ChannelQuery(BaseQuery):
         parent_id: hikari.Snowflake | None = None,
         position: int | None = None,
         is_nsfw: bool | None = None,
-    ) -> CacheIterator[hikari.GuildPrivateThread]:...
+    ) -> CacheIterator[PersistentGuildPrivateThread]:...
 
     @overload
     def where(
@@ -212,7 +239,7 @@ class ChannelQuery(BaseQuery):
         parent_id: hikari.Snowflake | None = None,
         position: int | None = None,
         is_nsfw: bool | None = None,
-    ) -> CacheIterator[hikari.GuildStageChannel]:...
+    ) -> CacheIterator[PersistentGuildStageChannel]:...
 
     @overload
     def where(
@@ -225,7 +252,7 @@ class ChannelQuery(BaseQuery):
         parent_id: hikari.Snowflake | None = None,
         position: int | None = None,
         is_nsfw: bool | None = None,
-    ) -> CacheIterator[hikari.GuildForumChannel]:...
+    ) -> CacheIterator[PersistentGuildForumChannel]:...
 
     @overload
     def where(
@@ -238,7 +265,7 @@ class ChannelQuery(BaseQuery):
         parent_id: hikari.Snowflake | None = None,
         position: int | None = None,
         is_nsfw: bool | None = None,
-    ) -> CacheIterator[hikari.GuildMediaChannel]:...
+    ) -> CacheIterator[PersistentGuildMediaChannel]:...
 
     @overload
     def where(
@@ -251,7 +278,7 @@ class ChannelQuery(BaseQuery):
         parent_id: hikari.Snowflake | None = None,
         position: int | None = None,
         is_nsfw: bool | None = None,
-    ) -> CacheIterator[hikari.GuildChannel]:
+    ) -> CacheIterator[PersistentGuildChannel]:
         ...
 
     def where( # noqa: PLR0913
@@ -264,13 +291,13 @@ class ChannelQuery(BaseQuery):
         parent_id: hikari.Snowflake | None = None,
         position: int | None = None,
         is_nsfw: bool | None = None,
-    ) -> CacheIterator[hikari.GuildChannel]:
+    ) -> CacheIterator[PersistentGuildChannel]:
         """
         Filter the results using various metadata options.
 
         Returns
         -------
-        CacheIterator[hikari.GuildChannel]
+        CacheIterator[PersistentGuildChannel]
             An asynchronous iterator providing lazy access to the results.
         """
 
@@ -287,7 +314,7 @@ class ChannelQuery(BaseQuery):
 class GuildQuery(BaseQuery):
     """Guild backend query."""
 
-    def __init__(self, cache: Cache) -> None:
+    def __init__(self, cache: Cache, **kwargs: Any) -> None: # noqa: ANN401
         super().__init__(cache)
 
         self._id: hikari.Snowflake | None = None
@@ -318,13 +345,23 @@ class GuildQuery(BaseQuery):
         self._widget_channel_id: hikari.Snowflake | None = None
         self._nsfw_level: hikari.GuildNSFWLevel | None = None
 
-    def all(self) -> CacheIterator[hikari.Guild]:
+        if not kwargs:
+            return
+
+        for key, value in kwargs.items():
+            if not hasattr(self, f"_{key}"):
+                error: str = f"Unknown query parameter: {key!r}"
+                raise TypeError(error)
+
+            setattr(self, f"_{key}", value)
+
+    def all(self) -> CacheIterator[PersistentGuild]:
         """
         Retrieve all results.
 
         Returns
         -------
-        CacheIterator[hikari.Guild]
+        CacheIterator[PersistentGuild]
             An asynchronous iterator providing lazy access to the results.
         """
 
@@ -335,7 +372,7 @@ class GuildQuery(BaseQuery):
         *,
         id: hikari.Snowflake, # noqa: A002
         fetch_if_missing: bool = False,
-    ) -> hikari.Guild | None:
+    ) -> PersistentGuild | None:
         """
         Fetch a guild directly from its ID.
 
@@ -348,7 +385,7 @@ class GuildQuery(BaseQuery):
 
         Returns
         -------
-        hikari.Guild | None
+        PersistentGuild | None
             The fetched guild from cache or REST, if found.
 
         Note
@@ -371,7 +408,7 @@ class GuildQuery(BaseQuery):
 
         self._id = id
 
-        result: hikari.Guild | None = await CacheIterator(
+        result: PersistentGuild | None = await CacheIterator(
             self._cache._backend.iter_guilds(self)
         ).first()
 
@@ -413,13 +450,13 @@ class GuildQuery(BaseQuery):
         verification_level: hikari.GuildVerificationLevel | None = None,
         widget_channel_id: hikari.Snowflake | None = None,
         nsfw_level: hikari.GuildNSFWLevel | None = None,
-    ) -> CacheIterator[hikari.Guild]:
+    ) -> CacheIterator[PersistentGuild]:
         """
         Filter the results using various metadata options.
 
         Returns
         -------
-        CacheIterator[hikari.Guild]
+        CacheIterator[PersistentGuild]
             An asynchronous iterator providing lazy access to the results.
         """
 
@@ -456,7 +493,7 @@ class GuildQuery(BaseQuery):
 class MemberQuery(BaseQuery):
     """Member backend query."""
 
-    def __init__(self, cache: Cache) -> None:
+    def __init__(self, cache: Cache, **kwargs: Any) -> None: # noqa: ANN401
         super().__init__(cache)
 
         self._guild_id: hikari.Snowflake | None = None
@@ -466,13 +503,23 @@ class MemberQuery(BaseQuery):
         self._guild_banner_hash: str | None = None
         self._guild_flags: hikari.GuildMemberFlags | None = None
 
-    def all(self) -> CacheIterator[hikari.Member]:
+        if not kwargs:
+            return
+
+        for key, value in kwargs.items():
+            if not hasattr(self, f"_{key}"):
+                error: str = f"Unknown query parameter: {key!r}"
+                raise TypeError(error)
+
+            setattr(self, f"_{key}", value)
+
+    def all(self) -> CacheIterator[PersistentMember]:
         """
         Retrieve all results.
 
         Returns
         -------
-        CacheIterator[hikari.Member]
+        CacheIterator[PersistentMember]
             An asynchronous iterator providing lazy access to the results.
         """
 
@@ -484,7 +531,7 @@ class MemberQuery(BaseQuery):
         guild_id: hikari.Snowflake,
         member_id: hikari.Snowflake,
         fetch_if_missing: bool = False,
-    ) -> hikari.Member | None:
+    ) -> PersistentMember | None:
         """
         Fetch a member directly from their ID.
 
@@ -499,7 +546,7 @@ class MemberQuery(BaseQuery):
 
         Returns
         -------
-        hikari.Member | None
+        PersistentMember | None
             The fetched member from cache or REST, if found.
 
         Note
@@ -521,7 +568,7 @@ class MemberQuery(BaseQuery):
         self._guild_id = guild_id
         self._id = member_id
 
-        result: hikari.Member | None = await CacheIterator(
+        result: PersistentMember | None = await CacheIterator(
             self._cache._backend.iter_members(self)
         ).first()
 
@@ -546,13 +593,13 @@ class MemberQuery(BaseQuery):
         guild_avatar_hash: str | None = None,
         guild_banner_hash: str | None = None,
         guild_flags: hikari.GuildMemberFlags | None = None,
-    ) -> CacheIterator[hikari.Member]:
+    ) -> CacheIterator[PersistentMember]:
         """
         Filter the results using various metadata options.
 
         Returns
         -------
-        CacheIterator[hikari.Member]
+        CacheIterator[PersistentMember]
             An asynchronous iterator providing lazy access to the results.
         """
 
@@ -568,7 +615,7 @@ class MemberQuery(BaseQuery):
 class RoleQuery(BaseQuery):
     """Role backend query."""
 
-    def __init__(self, cache: Cache) -> None:
+    def __init__(self, cache: Cache, **kwargs: Any) -> None: # noqa: ANN401
         super().__init__(cache)
 
         self._id: hikari.Snowflake | None = None
@@ -588,13 +635,23 @@ class RoleQuery(BaseQuery):
         self._is_available_for_purchase: bool | None = None
         self._is_guild_linked_role: bool | None = None
 
-    def all(self) -> CacheIterator[hikari.Role]:
+        if not kwargs:
+            return
+
+        for key, value in kwargs.items():
+            if not hasattr(self, f"_{key}"):
+                error: str = f"Unknown query parameter: {key!r}"
+                raise TypeError(error)
+
+            setattr(self, f"_{key}", value)
+
+    def all(self) -> CacheIterator[PersistentRole]:
         """
         Retrieve all results.
 
         Returns
         -------
-        CacheIterator[hikari.Role]
+        CacheIterator[PersistentRole]
             An asynchronous iterator providing lazy access to the results.
         """
 
@@ -605,7 +662,7 @@ class RoleQuery(BaseQuery):
         *,
         id: hikari.Snowflake, # noqa: A002
         guild_id_if_missing: hikari.Snowflake | None = None,
-    ) -> hikari.Role | None:
+    ) -> PersistentRole | None:
         """
         Fetch a role directly from its ID.
 
@@ -618,7 +675,7 @@ class RoleQuery(BaseQuery):
 
         Returns
         -------
-        hikari.Role | None
+        PersistentRole | None
             The fetched role from cache or REST, if found.
 
         Note
@@ -639,7 +696,7 @@ class RoleQuery(BaseQuery):
 
         self._id = id
 
-        result: hikari.Role | None = await CacheIterator(
+        result: PersistentRole | None = await CacheIterator(
             self._cache._backend.iter_roles(self)
         ).first()
 
@@ -670,13 +727,13 @@ class RoleQuery(BaseQuery):
         is_premium_subscriber_role: bool | None = None,
         is_available_for_purchase: bool | None = None,
         is_guild_linked_role: bool | None = None,
-    ) -> CacheIterator[hikari.Role]:
+    ) -> CacheIterator[PersistentRole]:
         """
         Filter the results using various metadata options.
 
         Returns
         -------
-        CacheIterator[hikari.Role]
+        CacheIterator[PersistentRole]
             An asynchronous iterator providing lazy access to the results.
         """
 

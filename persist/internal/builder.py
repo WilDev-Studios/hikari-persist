@@ -1,19 +1,39 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import (
+    Any,
+    TYPE_CHECKING,
+)
+from ..impl.objects import (
+    PersistentGuildCategory,
+    PersistentGuildNewsChannel,
+    PersistentGuildNewsThread,
+    PersistentGuildPrivateThread,
+    PersistentGuildPublicThread,
+    PersistentGuildTextChannel,
+    PersistentGuildVoiceChannel,
+    PersistentGuildMediaChannel,
+    PersistentGuildForumChannel,
+    PersistentGuildStageChannel,
+)
 
 import hikari
+
+if TYPE_CHECKING:
+    from ..impl.cache import Cache
+    from ..impl.objects import (
+        PersistentGuildChannel,
+    )
 
 
 __all__ = ()
 
 def _build_channel( # noqa: PLR0911
-    app: hikari.RESTAware,
+    cache: Cache,
     ctype: hikari.ChannelType,
     k: dict[str, Any],
-) -> hikari.GuildChannel:
+) -> PersistentGuildChannel:
     common = {
-        "app": app,
         "id": k["id"],
         "name": k["name"],
         "type": k["type"],
@@ -22,7 +42,8 @@ def _build_channel( # noqa: PLR0911
 
     match ctype:
         case hikari.ChannelType.GUILD_TEXT:
-            return hikari.GuildTextChannel(
+            return PersistentGuildTextChannel(
+                cache,
                 **common,
                 parent_id=k["parent_id"],
                 position=k["position"],
@@ -37,7 +58,8 @@ def _build_channel( # noqa: PLR0911
                 flags=k["flags"],
             )
         case hikari.ChannelType.GUILD_VOICE:
-            return hikari.GuildVoiceChannel(
+            return PersistentGuildVoiceChannel(
+                cache,
                 **common,
                 parent_id=k["parent_id"],
                 position=k["position"],
@@ -52,7 +74,8 @@ def _build_channel( # noqa: PLR0911
                 flags=k["flags"],
             )
         case hikari.ChannelType.GUILD_CATEGORY:
-            return hikari.GuildCategory(
+            return PersistentGuildCategory(
+                cache,
                 **common,
                 parent_id=k["parent_id"],
                 position=k["position"],
@@ -62,7 +85,8 @@ def _build_channel( # noqa: PLR0911
                 flags=k["flags"],
             )
         case hikari.ChannelType.GUILD_NEWS:
-            return hikari.GuildNewsChannel(
+            return PersistentGuildNewsChannel(
+                cache,
                 **common,
                 parent_id=k["parent_id"],
                 position=k["position"],
@@ -75,7 +99,8 @@ def _build_channel( # noqa: PLR0911
                 application_id=k.get("application_id"),
             )
         case hikari.ChannelType.GUILD_NEWS_THREAD:
-            return hikari.GuildNewsThread(
+            return PersistentGuildNewsThread(
+                cache,
                 **common,
                 parent_id=k["parent_id"],
                 last_message_id=k["last_message_id"],
@@ -89,7 +114,8 @@ def _build_channel( # noqa: PLR0911
                 application_id=k.get("application_id"),
             )
         case hikari.ChannelType.GUILD_PUBLIC_THREAD:
-            return hikari.GuildPublicThread(
+            return PersistentGuildPublicThread(
+                cache,
                 **common,
                 parent_id=k["parent_id"],
                 last_message_id=k["last_message_id"],
@@ -105,7 +131,8 @@ def _build_channel( # noqa: PLR0911
                 flags=k["flags"],
             )
         case hikari.ChannelType.GUILD_PRIVATE_THREAD:
-            return hikari.GuildPrivateThread(
+            return PersistentGuildPrivateThread(
+                cache,
                 **common,
                 parent_id=k["parent_id"],
                 last_message_id=k["last_message_id"],
@@ -119,7 +146,8 @@ def _build_channel( # noqa: PLR0911
                 application_id=k.get("application_id"),
             )
         case hikari.ChannelType.GUILD_STAGE:
-            return hikari.GuildStageChannel(
+            return PersistentGuildStageChannel(
+                cache,
                 **common,
                 parent_id=k["parent_id"],
                 position=k["position"],
@@ -134,7 +162,8 @@ def _build_channel( # noqa: PLR0911
                 flags=k["flags"],
             )
         case hikari.ChannelType.GUILD_FORUM:
-            return hikari.GuildForumChannel(
+            return PersistentGuildForumChannel(
+                cache,
                 **common,
                 parent_id=k["parent_id"],
                 position=k["position"],
@@ -154,7 +183,8 @@ def _build_channel( # noqa: PLR0911
                 flags=k["flags"],
             )
         case hikari.ChannelType.GUILD_MEDIA:
-            return hikari.GuildMediaChannel(
+            return PersistentGuildMediaChannel(
+                cache,
                 **common,
                 parent_id=k["parent_id"],
                 position=k["position"],
