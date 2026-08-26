@@ -17,7 +17,7 @@ from ..impl.objects import (
     PersistentMember,
     PersistentRole,
 )
-from ..internal.builder import _build_channel
+from ..internal.builder import build_channel
 from ..internal.definitions import DataType
 from ..internal.mapping import (
     CHANNEL_WRITE_MAPPERS,
@@ -640,7 +640,7 @@ class SQLiteBackend(SQLBackend, Backend):
                     ctype: hikari.ChannelType = hikari.ChannelType(row[type_idx])
                     kwargs: dict[str, Any] = decode_row(CHANNELS.fields, row)
                     del kwargs["_sync"]
-                    yield _build_channel(self._cache, ctype, kwargs)
+                    yield build_channel(self._cache, ctype, kwargs)
 
     async def iter_guilds(
         self,

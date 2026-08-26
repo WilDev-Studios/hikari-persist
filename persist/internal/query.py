@@ -49,6 +49,17 @@ class ChannelQuery(BaseQuery):
     """Channel backend query."""
 
     def __init__(self, cache: Cache, **kwargs: Any) -> None: # noqa: ANN401
+        """
+        Create a new backend channel query object.
+
+        Parameters
+        ----------
+        cache : Cache
+            The associated cache for backend access.
+        **kwargs : Any
+            Any keyword arguments used for preset filters.
+        """
+
         super().__init__(cache)
 
         self._id: hikari.Snowflake | None = None
@@ -315,6 +326,17 @@ class GuildQuery(BaseQuery):
     """Guild backend query."""
 
     def __init__(self, cache: Cache, **kwargs: Any) -> None: # noqa: ANN401
+        """
+        Create a new backend guild query object.
+
+        Parameters
+        ----------
+        cache : Cache
+            The associated cache for backend access.
+        **kwargs : Any
+            Any keyword arguments used for preset filters.
+        """
+
         super().__init__(cache)
 
         self._id: hikari.Snowflake | None = None
@@ -494,6 +516,17 @@ class MemberQuery(BaseQuery):
     """Member backend query."""
 
     def __init__(self, cache: Cache, **kwargs: Any) -> None: # noqa: ANN401
+        """
+        Create a new backend member query object.
+
+        Parameters
+        ----------
+        cache : Cache
+            The associated cache for backend access.
+        **kwargs : Any
+            Any keyword arguments used for preset filters.
+        """
+
         super().__init__(cache)
 
         self._guild_id: hikari.Snowflake | None = None
@@ -616,6 +649,17 @@ class RoleQuery(BaseQuery):
     """Role backend query."""
 
     def __init__(self, cache: Cache, **kwargs: Any) -> None: # noqa: ANN401
+        """
+        Create a new backend role query object.
+
+        Parameters
+        ----------
+        cache : Cache
+            The associated cache for backend access.
+        **kwargs : Any
+            Any keyword arguments used for preset filters.
+        """
+
         super().__init__(cache)
 
         self._id: hikari.Snowflake | None = None

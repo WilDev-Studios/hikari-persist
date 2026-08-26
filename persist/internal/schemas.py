@@ -109,6 +109,7 @@ CHANNELS: Table = Table(
     ),
     primary_key=("id",),
 )
+"""The `channels` database table schema."""
 GUILDS: Table = Table(
     name="guilds",
     fields=(
@@ -167,6 +168,7 @@ GUILDS: Table = Table(
     ),
     primary_key=("id",),
 )
+"""The `guilds` database table schema."""
 MEMBERS: Table = Table(
     name="members",
     fields=(
@@ -192,6 +194,7 @@ MEMBERS: Table = Table(
     ),
     primary_key=("id", "guild_id",),
 )
+"""The `members` database table schema."""
 ROLES: Table = Table(
     name="roles",
     fields=(
@@ -226,6 +229,7 @@ ROLES: Table = Table(
     ),
     primary_key=("id",),
 )
+"""The `roles` database table schema."""
 USERS: Table = Table(
     name="users",
     fields=(
@@ -262,6 +266,7 @@ USERS: Table = Table(
     ),
     primary_key=("id",),
 )
+"""The `users` database table schema."""
 
 SCHEMA: tuple[Table, ...] = (
     CHANNELS,
@@ -270,3 +275,4 @@ SCHEMA: tuple[Table, ...] = (
     ROLES,
     USERS,
 )
+"""The entire database schema."""

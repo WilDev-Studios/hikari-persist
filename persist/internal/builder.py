@@ -28,11 +28,29 @@ if TYPE_CHECKING:
 
 __all__ = ()
 
-def _build_channel( # noqa: PLR0911
+def build_channel( # noqa: PLR0911
     cache: Cache,
     ctype: hikari.ChannelType,
     k: dict[str, Any],
 ) -> PersistentGuildChannel:
+    """
+    Build a native `hikari` channel instance provided a type and relevant data.
+
+    Parameters
+    ----------
+    cache : Cache
+        The integrated cache instance.
+    ctype : hikari.ChannelType
+        The channel's type.
+    k : dict[str, Any]
+        Any relevant data required for the construction of the new channel instance.
+
+    Returns
+    -------
+    PersistentGuildChannel
+        The new channel instance.
+    """
+
     common = {
         "id": k["id"],
         "name": k["name"],
