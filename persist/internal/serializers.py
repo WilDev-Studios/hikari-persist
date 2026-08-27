@@ -70,6 +70,18 @@ class Serializer(ABC, Generic[T, U]):
 
         raise NotImplementedError
 
+class SerializerCast(Serializer[T, U]):
+    """Serializer used to serialize between a primitive and a safe reducible."""
+
+    def __init__(self, wrapper: Callable[[T], U], primitive: type[T]) -> None:
+        self.wrapper: Callable[[T], U] = wrapper
+        self.primitive: type[T] = primitive
+
+    def deserialize(self, value: T) -> U:
+        return self.wrapper(value)
+    def serialize(self, value: U) -> T:
+        return self.primitive(value)
+
 class SerializerIdentity(Serializer[JSONValue, JSONValue]):
     """Serializer used to serialize between different `JSON`-compatible values."""
 

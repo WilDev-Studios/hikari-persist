@@ -11,6 +11,7 @@ from .definitions import (
 )
 from .serializers import (
     Attr,
+    SerializerCast,
     SerializerCodec,
     SerializerEnum,
     SerializerEnumLenient,
@@ -213,7 +214,9 @@ ROLES: Table = Table(
         Field("guild_id", DataType.BIGINT, nullable=False),
         Field("is_hoisted", DataType.BOOLEAN),
         Field("icon_hash", DataType.STRING),
-        Field("unicode_emoji", DataType.STRING, serializer=SerializerEnum(hikari.UnicodeEmoji)),
+        Field("unicode_emoji", DataType.STRING, serializer=SerializerCast(
+            hikari.UnicodeEmoji, str,
+        )),
         Field("is_managed", DataType.BOOLEAN, nullable=False),
         Field("is_mentionable", DataType.BOOLEAN, nullable=False),
         Field("permissions", DataType.BIGINT, serializer=SerializerFlag(
