@@ -61,3 +61,4 @@ CHANNEL_FIELDS: dict[hikari.ChannelType, tuple[str, ...]] = {
         "default_reaction_emoji_id", "default_reaction_emoji_name", "application_id", "flags",
     ),
 }
+"""All required fields needed by each channel type."""

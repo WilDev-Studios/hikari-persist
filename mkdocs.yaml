@@ -78,6 +78,7 @@ nav:
       - ~.cache: pages/api/impl/cache.md
       - ~.event: pages/api/impl/event.md
       - ~.iterator: pages/api/impl/iterator.md
+      - ~.objects: pages/api/impl/objects.md
       - ~.rule: pages/api/impl/rule.md
     - persist.internal:
       - ~.builder: pages/api/internal/builder.md

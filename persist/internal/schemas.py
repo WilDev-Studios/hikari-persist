@@ -11,6 +11,7 @@ from .definitions import (
 )
 from .serializers import (
     Attr,
+    SerializerCast,
     SerializerCodec,
     SerializerEnum,
     SerializerEnumLenient,
@@ -109,6 +110,7 @@ CHANNELS: Table = Table(
     ),
     primary_key=("id",),
 )
+"""The `channels` database table schema."""
 GUILDS: Table = Table(
     name="guilds",
     fields=(
@@ -167,6 +169,7 @@ GUILDS: Table = Table(
     ),
     primary_key=("id",),
 )
+"""The `guilds` database table schema."""
 MEMBERS: Table = Table(
     name="members",
     fields=(
@@ -192,6 +195,7 @@ MEMBERS: Table = Table(
     ),
     primary_key=("id", "guild_id",),
 )
+"""The `members` database table schema."""
 ROLES: Table = Table(
     name="roles",
     fields=(
@@ -210,7 +214,9 @@ ROLES: Table = Table(
         Field("guild_id", DataType.BIGINT, nullable=False),
         Field("is_hoisted", DataType.BOOLEAN),
         Field("icon_hash", DataType.STRING),
-        Field("unicode_emoji", DataType.STRING, serializer=SerializerEnum(hikari.UnicodeEmoji)),
+        Field("unicode_emoji", DataType.STRING, serializer=SerializerCast(
+            hikari.UnicodeEmoji, str,
+        )),
         Field("is_managed", DataType.BOOLEAN, nullable=False),
         Field("is_mentionable", DataType.BOOLEAN, nullable=False),
         Field("permissions", DataType.BIGINT, serializer=SerializerFlag(
@@ -226,6 +232,7 @@ ROLES: Table = Table(
     ),
     primary_key=("id",),
 )
+"""The `roles` database table schema."""
 USERS: Table = Table(
     name="users",
     fields=(
@@ -262,6 +269,7 @@ USERS: Table = Table(
     ),
     primary_key=("id",),
 )
+"""The `users` database table schema."""
 
 SCHEMA: tuple[Table, ...] = (
     CHANNELS,
@@ -270,3 +278,4 @@ SCHEMA: tuple[Table, ...] = (
     ROLES,
     USERS,
 )
+"""The entire database schema."""

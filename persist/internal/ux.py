@@ -18,6 +18,15 @@ __all__ = ()
 logger: logging.Logger = logging.getLogger("persist.ux")
 
 async def check_updates(bot: GatewayBot) -> None:
+    """
+    Check if the installed version of `hikari-persist` is the latest and warn otherwise.
+
+    Parameters
+    ----------
+    bot : GatewayBot
+        The Discord bot instance to use for the HTTP API reference.
+    """
+
     session = bot.rest._client_session
 
     try:
@@ -36,6 +45,10 @@ async def check_updates(bot: GatewayBot) -> None:
     )
 
 def verify_compatibility() -> None:
+    """
+    Verify compatibility between and enforce the versioning scheme defined in the project.
+    """
+
     current: str = version("hikari")
     if current == __hikari_version__:
         return
