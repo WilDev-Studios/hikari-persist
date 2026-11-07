@@ -10,7 +10,7 @@ authors = [
     { name = "WilDev Studios", email = "wildevstudios@gmail.com" }
 ]
 readme = "README.md"
-requires-python = ">=3.10,<3.15"
+requires-python = ">=3.11,<3.16"
 license = { file = "LICENSE" }
 keywords = [
     "async",
@@ -25,11 +25,11 @@ keywords = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Programming Language :: Python :: Implementation :: CPython",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
@@ -41,7 +41,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "hikari==2.6.0",
+    "hikari==2.7.0",
 ]
 
 [project.urls]
@@ -52,7 +52,7 @@ Issues = "https://github.com/WilDev-Studios/hikari-persist/issues"
 
 [project.optional-dependencies]
 postgresql = [
-    "asyncpg>0.31.0,<1",
+    "asyncpg>0.32.0,<1",
 ]
 sqlite = [
     "aiosqlite>0.22.1,<1",
@@ -78,7 +78,7 @@ source = "vcs"
 version-file = "persist/_version.py"
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 100
 show-fixes = true
 
@@ -109,5 +109,6 @@ select = [
 "_version.py" = ["RUF022"]
 "tests/**/*.py" = ["ANN", "ARG", "PLR2004", "PLW0108"]
 
-[pytest]
-asyncio_mode = "auto"
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
