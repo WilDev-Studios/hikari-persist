@@ -11,8 +11,8 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 from datetime import (
+    UTC,
     timedelta,
-    timezone,
 )
 from typing import (
     Any,
@@ -984,7 +984,7 @@ class SQLBackend:
             values["topic"] = channel.topic
             values["last_message_id"] = channel.last_message_id
             values["last_pin_timestamp"] = channel.last_pin_timestamp.astimezone(
-                timezone.utc,
+                UTC,
             ).timestamp() if channel.last_pin_timestamp else None
             values[
                 "default_auto_archive_duration"
@@ -1005,7 +1005,7 @@ class SQLBackend:
         )):
             values["last_message_id"] = channel.last_message_id
             values["last_pin_timestamp"] = channel.last_pin_timestamp.astimezone(
-                timezone.utc,
+                UTC,
             ).timestamp() if channel.last_pin_timestamp else None
             values["rate_limit_per_user"] = channel.rate_limit_per_user.total_seconds()
             values["approximate_message_count"] = channel.approximate_message_count
@@ -1013,7 +1013,7 @@ class SQLBackend:
             values["member_thread_id"] = channel.member.thread_id if channel.member else None
             values["member_user_id"] = channel.member.user_id if channel.member else None
             values["member_joined_at"] = channel.member.joined_at.astimezone(
-                timezone.utc
+                UTC
             ).timestamp() if channel.member else None
             values["member_flags"] = channel.member.flags if channel.member else None
             values["owner_id"] = channel.owner_id
@@ -1023,11 +1023,11 @@ class SQLBackend:
                 "metadata_auto_archive_duration"
             ] = channel.metadata.auto_archive_duration.total_seconds()
             values["metadata_archive_timestamp"] = channel.metadata.archive_timestamp.astimezone(
-                timezone.utc,
+                UTC,
             ).timestamp()
             values["metadata_is_locked"] = int(channel.metadata.is_locked)
             values["metadata_created_at"] = channel.metadata.created_at.astimezone(
-                timezone.utc,
+                UTC,
             ).timestamp() if channel.metadata.created_at else None
 
             if isinstance(channel, hikari.GuildPublicThread):

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import (
+    datetime,
+    timedelta,
+    UTC,
+)
 
 import pytest
 
@@ -21,7 +25,7 @@ class TestDecodeRow:
             "id": 1,
             "name": "Widget A",
             "is_enabled": True,
-            "created_at": datetime(2024, 1, 1, tzinfo=timezone.utc),
+            "created_at": datetime(2024, 1, 1, tzinfo=UTC),
             "metadata": None,
         }
 
@@ -133,7 +137,7 @@ class TestRowMapperToRow:
         mapper = RowMapper(widgets_table, factory=lambda k: widget_factory(**k))
         w = widget_factory(
             id=1, name="Widget A", is_enabled=True,
-            created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            created_at=datetime(2024, 1, 1, tzinfo=UTC),
             metadata={"tag": "x"},
         )
         row = mapper.to_row(w)
@@ -182,7 +186,7 @@ class TestRowMapperFromRow:
         result = mapper.from_row(row)
         assert result == widget_factory(
             id=1, name="Widget A", is_enabled=True,
-            created_at=datetime(2024, 1, 1, tzinfo=timezone.utc), metadata=None,
+            created_at=datetime(2024, 1, 1, tzinfo=UTC), metadata=None,
         )
 
     def test_factory_receives_exactly_decode_row_output(self, widgets_table):
@@ -198,7 +202,7 @@ class TestRowMapperFromRow:
 
         assert received == {
             "id": 1, "name": "x", "is_enabled": True,
-            "created_at": datetime(2024, 1, 1, tzinfo=timezone.utc),
+            "created_at": datetime(2024, 1, 1, tzinfo=UTC),
             "metadata": {"a": 1},
         }
 
@@ -216,7 +220,7 @@ class TestRowMapperRoundtrip:
         mapper = RowMapper(widgets_table, factory=lambda k: widget_factory(**k))
         original = widget_factory(
             id=7, name="Roundtrip", is_enabled=True,
-            created_at=datetime(2024, 6, 15, 12, 30, 45, tzinfo=timezone.utc),
+            created_at=datetime(2024, 6, 15, 12, 30, 45, tzinfo=UTC),
             metadata={"nested": [1, 2, {"three": 3}]},
         )
 

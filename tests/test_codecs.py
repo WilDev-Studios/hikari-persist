@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import (
+    UTC,
+    datetime,
+    timedelta,
+    timezone,
+)
 
 import json
 
@@ -55,11 +60,11 @@ class TestCodecDatetime:
 
     def test_decode_produces_utc_aware_datetime(self, codec):
         dt = codec.decode(0.0)
-        assert dt == datetime(1970, 1, 1, tzinfo=timezone.utc)
-        assert dt.tzinfo is timezone.utc
+        assert dt == datetime(1970, 1, 1, tzinfo=UTC)
+        assert dt.tzinfo is UTC
 
     def test_encode_utc_input(self, codec):
-        dt = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        dt = datetime(2024, 1, 1, tzinfo=UTC)
         assert codec.encode(dt) == pytest.approx(1704067200.0)
 
     def test_encode_non_utc_input_converts_correctly(self, codec):
@@ -68,21 +73,21 @@ class TestCodecDatetime:
         assert codec.encode(dt) == pytest.approx(1704067200.0)
 
     @pytest.mark.parametrize("dt", [
-        datetime(2000, 1, 1, tzinfo=timezone.utc),
-        datetime(2024, 6, 15, 12, 30, 45, 123456, tzinfo=timezone.utc),
-        datetime(2038, 1, 19, 3, 14, 7, tzinfo=timezone.utc),  # past 32-bit overflow point
+        datetime(2000, 1, 1, tzinfo=UTC),
+        datetime(2024, 6, 15, 12, 30, 45, 123456, tzinfo=UTC),
+        datetime(2038, 1, 19, 3, 14, 7, tzinfo=UTC),  # past 32-bit overflow point
     ])
     def test_roundtrip_preserves_instant(self, codec, dt):
         result = codec.decode(codec.encode(dt))
         assert result == dt
 
     def test_roundtrip_preserves_microsecond_precision(self, codec):
-        dt = datetime(2024, 3, 3, 3, 3, 3, 987654, tzinfo=timezone.utc)
+        dt = datetime(2024, 3, 3, 3, 3, 3, 987654, tzinfo=UTC)
         result = codec.decode(codec.encode(dt))
         assert abs((result - dt).total_seconds()) < 1e-6
 
     def test_pre_epoch_datetime(self, codec):
-        dt = datetime(1969, 12, 31, tzinfo=timezone.utc)
+        dt = datetime(1969, 12, 31, tzinfo=UTC)
         encoded = codec.encode(dt)
         assert encoded < 0
         assert codec.decode(encoded) == dt

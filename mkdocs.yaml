@@ -31,7 +31,7 @@ plugins:
       handlers:
         python:
           inventories:
-            - https://docs.python.org/3.10/objects.inv
+            - https://docs.python.org/3.11/objects.inv
             - https://docs.hikari-py.dev/en/latest/objects.inv
           paths: ["."]
           options:

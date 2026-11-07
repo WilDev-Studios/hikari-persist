@@ -6,7 +6,7 @@ A lightweight and modular persistent cache library for `hikari`-based Discord bo
 **GitHub:** https://github.com/WilDev-Studios/hikari-persist
 """
 
-__hikari_version__ = "2.6.0"
+__hikari_version__ = "2.7.0"
 __all__ = (
     "Backend",
     "BulkChannelEvent",

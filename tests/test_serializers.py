@@ -4,7 +4,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from datetime import datetime, timezone, timedelta
+from datetime import (
+    UTC,
+    datetime,
+    timedelta,
+)
 from persist.internal.codecs import CodecDatetime, CodecTimedelta, CodecJSON
 from persist.internal.serializers import (
     Attr,
@@ -60,7 +64,7 @@ class TestSerializerCodec:
 
     def test_integration_with_real_datetime_codec(self):
         serializer = SerializerCodec(CodecDatetime())
-        dt = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        dt = datetime(2024, 1, 1, tzinfo=UTC)
 
         encoded = serializer.serialize(dt)
         assert isinstance(encoded, float)
@@ -308,7 +312,7 @@ class TestSerializerObject:
             factory=lambda **kw: Event(**kw),
             attrs=(Attr("at", serializer=SerializerCodec(CodecDatetime())),),
         )
-        dt = datetime(2024, 5, 5, 5, 5, 5, tzinfo=timezone.utc)
+        dt = datetime(2024, 5, 5, 5, 5, 5, tzinfo=UTC)
         original = Event(dt)
 
         serialized = serializer.serialize(original)
