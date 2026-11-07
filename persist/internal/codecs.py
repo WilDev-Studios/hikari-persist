@@ -5,9 +5,9 @@ from abc import (
     abstractmethod,
 )
 from datetime import (
+    UTC,
     datetime,
     timedelta,
-    timezone,
 )
 from typing import (
     Generic,
@@ -44,9 +44,9 @@ class CodecBoolean(Codec[int, bool]):
     def encode(self, value: bool) -> int: return int(value)
 
 class CodecDatetime(Codec[float, datetime]):
-    _EPOCH: datetime = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    _EPOCH: datetime = datetime(1970, 1, 1, tzinfo=UTC)
     def decode(self, value: float) -> datetime: return self._EPOCH + timedelta(seconds=value)
-    def encode(self, value: datetime) -> float: return value.astimezone(timezone.utc).timestamp()
+    def encode(self, value: datetime) -> float: return value.astimezone(UTC).timestamp()
 
 class CodecJSON(Codec[str, JSONValue]):
     def decode(self, value: str) -> JSONValue: return json.loads(value)
